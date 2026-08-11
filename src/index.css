@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom D-Pad focus indicators for Smart TV interface */
+.dpad-focusable {
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dpad-focusable.focused,
+.dpad-focusable:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 4px #E50914, 0 10px 25px -5px rgba(229, 9, 20, 0.5) !important;
+  transform: scale(1.05);
+  z-index: 30 !important;
+  background-color: rgba(45, 45, 45, 0.95);
+}
+
+/* Custom scrollbars hidden or ultra subtle for TV experience */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(20, 20, 20, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E50914;
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(24, 24, 24, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}

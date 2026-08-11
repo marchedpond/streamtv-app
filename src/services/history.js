@@ -1,0 +1,120 @@
+/**
+ * History Service for "Continuar Viendo"
+ * Handles Movies and Series left in-progress ("a medias")
+ */
+
+const LOCAL_STORAGE_KEY = 'streamtv_watch_history';
+
+const getLocalHistory = () => {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    // Filter out live TV or finished items
+    return list.filter((i) => {
+      const isVodOrSeries = i.item_type === 'vod' || i.item_type === 'series';
+      const inProgress = i.progress_seconds > 10 && (!i.duration_seconds || i.progress_seconds < i.duration_seconds - 30);
+      return isVodOrSeries && inProgress;
+    });
+  } catch (err) {
+    return [];
+  }
+};
+
+const saveLocalHistory = (item) => {
+  if (item.item_type === 'live') return;
+
+  try {
+    const list = getLocalHistory();
+    const compositeId = `${item.item_type || 'vod'}_${item.item_id}`;
+    const filtered = list.filter((i) => i.id !== compositeId);
+
+    const isFinished = item.duration_seconds > 0 && item.progress_seconds >= item.duration_seconds - 30;
+    const isTooShort = item.progress_seconds <= 10;
+
+    if (!isFinished && !isTooShort) {
+      const newItem = {
+        id: compositeId,
+        ...item,
+        updated_at: new Date().toISOString(),
+      };
+      filtered.unshift(newItem);
+    }
+
+    const trimmed = filtered.slice(0, 15);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch (err) {
+    console.error('LocalStorage history save error:', err);
+  }
+};
+
+/**
+ * Fetch watch history (Neon DB API with localStorage fallback)
+ */
+export const fetchWatchHistory = async () => {
+  const localItems = getLocalHistory();
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+    const res = await fetch('/api/history', { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    const contentType = res.headers.get('content-type');
+    if (res.ok && contentType && contentType.includes('application/json')) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.history)) {
+        return data.history;
+      }
+    }
+  } catch (err) {
+    // Local fallback
+  }
+
+  return localItems;
+};
+
+/**
+ * Save / Upsert watch progress
+ */
+export const saveWatchProgress = async (itemData) => {
+  const {
+    item_id,
+    item_type = 'vod',
+    title,
+    subtitle,
+    poster,
+    stream_url,
+    progress_seconds = 0,
+    duration_seconds = 0,
+  } = itemData;
+
+  if (!item_id || !stream_url || item_type === 'live') return;
+
+  const payload = {
+    item_id: String(item_id),
+    item_type,
+    title,
+    subtitle,
+    poster,
+    stream_url,
+    progress_seconds: Number(progress_seconds) || 0,
+    duration_seconds: Number(duration_seconds) || 0,
+  };
+
+  saveLocalHistory(payload);
+
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 2000);
+
+    await fetch('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    // Non-blocking error
+  }
+};
