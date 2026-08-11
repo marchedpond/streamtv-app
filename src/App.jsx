@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import LiveTVSection from './components/LiveTVSection';
@@ -325,6 +326,7 @@ export default function App() {
           )}
         </>
       )}
+      <Analytics />
     </div>
   );
 }
