@@ -315,6 +315,16 @@ export default function MediaPlayer({
       {/* Video Loading Animation Overlay */}
       {isLoadingVideo && !errorMsg && (
         <div className="absolute inset-0 bg-neutral-950 flex flex-col items-center justify-center space-y-6 z-40 transition-opacity duration-500">
+          {/* Top-Left Close Button during Loading */}
+          <button
+            data-dpad-id="player-loading-close"
+            onClick={handleClose}
+            className="dpad-focusable absolute top-6 left-6 p-3 rounded-full bg-neutral-900/90 hover:bg-red-600 text-white transition-all cursor-pointer border border-neutral-700 z-50 flex items-center gap-2 text-xs font-semibold shadow-xl"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="hidden sm:inline">Cancelar y Volver</span>
+          </button>
+
           <div className="relative flex items-center justify-center">
             {/* Animated Pulsing Ring */}
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-red-600/20 border-t-red-600 animate-spin" />
@@ -334,6 +344,14 @@ export default function MediaPlayer({
               Preparando transmisión HD y buffering...
             </p>
           </div>
+
+          <button
+            data-dpad-id="player-loading-cancel-btn"
+            onClick={handleClose}
+            className="dpad-focusable px-6 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold transition cursor-pointer"
+          >
+            Cancelar Reproducción
+          </button>
         </div>
       )}
 
