@@ -1,7 +1,6 @@
 /**
- * Vercel Serverless Proxy Route
- * Proxies Xtream Codes API requests from HTTPS (Vercel) to HTTP (IPTV Server)
- * Resolves Mixed Content security blocking in production browser deployments.
+ * Vercel Serverless Function Proxy for IPTV API
+ * Injects credentials server-side to hide them completely from the browser client.
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,10 +12,17 @@ export default async function handler(req, res) {
   }
 
   const server = (process.env.VITE_IPTV_SERVER || 'http://reydereyes.xyz:8080').replace(/\/+$/, '');
-  const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const queryString = urlObj.search;
+  const user = process.env.VITE_IPTV_USER || 'JosueMejia';
+  const pass = process.env.VITE_IPTV_PASS || 'PPw3tAhK4P';
 
-  const targetUrl = `${server}/player_api.php${queryString}`;
+  const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const searchParams = new URLSearchParams(urlObj.search);
+  
+  // Inject credentials on server side
+  searchParams.set('username', user);
+  searchParams.set('password', pass);
+
+  const targetUrl = `${server}/player_api.php?${searchParams.toString()}`;
 
   try {
     const controller = new AbortController();
@@ -31,7 +37,6 @@ export default async function handler(req, res) {
     const data = await response.text();
     return res.status(response.status).send(data);
   } catch (error) {
-    console.error('Vercel IPTV Proxy Error:', error);
-    return res.status(500).json({ error: 'Proxy error connecting to IPTV server', details: error.message });
+    return res.status(500).json({ error: 'No se pudo conectar con el servicio IPTV' });
   }
 }

@@ -7,15 +7,14 @@ import SeriesSection from './components/SeriesSection';
 import MediaPlayer from './components/MediaPlayer';
 import ContinueWatching from './components/ContinueWatching';
 import { useDPadNavigation } from './hooks/useDPadNavigation';
-import { authenticateAccount, getCredentials } from './services/xtream';
+import { authenticateAccount } from './services/xtream';
 import { fetchWatchHistory, saveWatchProgress } from './services/history';
-import { Radio, RefreshCw, AlertCircle, Tv, Play, RotateCcw, X } from 'lucide-react';
+import { Radio, RefreshCw, AlertCircle, Play, RotateCcw, X } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('live'); // 'live' | 'movies' | 'series'
   const [accountInfo, setAccountInfo] = useState(null);
   const [authStatus, setAuthStatus] = useState('loading'); // 'loading' | 'success' | 'error'
-  const [authError, setAuthError] = useState(null);
 
   // Active Video Stream State for MediaPlayer
   const [activeStream, setActiveStream] = useState(null);
@@ -48,7 +47,6 @@ export default function App() {
   // Auto Authenticate on App Mount
   const initAuth = async () => {
     setAuthStatus('loading');
-    setAuthError(null);
     try {
       const data = await authenticateAccount();
       if (data && (data.user_info || data.userInfo)) {
@@ -57,11 +55,9 @@ export default function App() {
         loadHistory();
       } else {
         setAuthStatus('error');
-        setAuthError('No se pudo verificar las credenciales del servidor Xtream Codes.');
       }
     } catch (err) {
       setAuthStatus('error');
-      setAuthError(err.message || 'Error de conexión con el servidor IPTV.');
     }
   };
 
@@ -121,8 +117,6 @@ export default function App() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const credentials = getCredentials();
-
   return (
     <div className="h-screen w-screen bg-[#141414] text-white flex flex-col font-['Outfit',sans-serif] overflow-hidden select-none">
       {/* Loading Splash Screen */}
@@ -140,13 +134,13 @@ export default function App() {
               Stream<span className="text-red-600">TV</span>
             </h2>
             <p className="text-xs text-neutral-400 font-medium">
-              Conectando automáticamente con {credentials.server}...
+              Cargando servicio de entretenimiento...
             </p>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-neutral-500">
             <RefreshCw className="w-4 h-4 animate-spin text-red-500" />
-            <span>Cargando contenido IPTV...</span>
+            <span>Conectando...</span>
           </div>
         </div>
       )}
@@ -154,23 +148,22 @@ export default function App() {
       {/* Auth Error Screen */}
       {authStatus === 'error' && (
         <div className="flex-1 flex flex-col items-center justify-center space-y-6 p-6 text-center bg-neutral-950">
-          <div className="w-16 h-16 rounded-full bg-red-950/80 border border-red-800 flex items-center justify-center text-red-500">
+          <div className="w-16 h-16 rounded-full bg-red-950/80 border border-red-800 flex items-center justify-center text-red-500 shadow-xl shadow-red-950/50">
             <AlertCircle className="w-8 h-8" />
           </div>
 
-          <div className="space-y-2 max-w-md">
-            <h2 className="text-xl font-bold text-white">Error de Conexión IPTV</h2>
-            <p className="text-xs text-neutral-400 leading-relaxed">{authError}</p>
-            <div className="p-3 bg-neutral-900 border border-neutral-800 rounded-xl text-[11px] font-mono text-neutral-400 text-left space-y-1">
-              <p>Servidor: {credentials.server}</p>
-              <p>Usuario: {credentials.user}</p>
-            </div>
+          <div className="space-y-3 max-w-md">
+            <h2 className="text-2xl font-extrabold text-white tracking-wide">Servicio No Disponible</h2>
+            <p className="text-sm text-neutral-400 leading-relaxed">
+              No se pudo establecer conexión con el catálogo de televisión.
+              Por favor verifica tu conexión a internet o reintenta en unos momentos.
+            </p>
           </div>
 
           <button
             data-dpad-id="auth-retry-btn"
             onClick={initAuth}
-            className="dpad-focusable px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-red-950/80 cursor-pointer"
+            className="dpad-focusable px-8 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-2.5 shadow-lg shadow-red-950/80 cursor-pointer transform hover:scale-105"
           >
             <RefreshCw className="w-4 h-4" />
             <span>Reintentar Conexión</span>
@@ -197,7 +190,7 @@ export default function App() {
               onRefresh={initAuth}
             />
 
-            {/* Main Content Area: overflow-y-auto allows vertical scrolling on mobile & touch */}
+            {/* Main Content Area */}
             <main className="flex-1 h-full overflow-y-auto flex flex-col scrollbar-thin">
               {/* Continue Watching Section (Filtered by activeTab) */}
               <ContinueWatching

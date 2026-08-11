@@ -1,26 +1,18 @@
 /**
  * Service for interacting with Xtream Codes API
- * Uses /api_proxy for both local Vite dev server and Vercel serverless proxy
+ * Completely hides credentials (username, password, server URLs) from the client browser.
  */
 
 export const getCredentials = () => {
-  const server = import.meta.env.VITE_IPTV_SERVER || 'http://reydereyes.xyz:8080';
-  const user = import.meta.env.VITE_IPTV_USER || 'JosueMejia';
-  const pass = import.meta.env.VITE_IPTV_PASS || 'PPw3tAhK4P';
-
-  const cleanedServer = server.replace(/\/+$/, '');
-  return { server: cleanedServer, user, pass };
+  return {
+    server: 'Servidor IPTV',
+    user: 'Usuario Activo',
+  };
 };
 
 const getApiEndpoint = () => {
-  const { server, user, pass } = getCredentials();
-  // Always use /api_proxy (handled by Vite proxy in dev and Vercel serverless proxy in prod)
-  const baseUrl = '/api_proxy';
   return {
-    url: `${baseUrl}?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`,
-    server,
-    user,
-    pass,
+    url: '/api_proxy',
   };
 };
 
@@ -33,7 +25,7 @@ const streamCache = {
 
 const fetchJson = async (action = '', extraParams = '', timeoutMs = 25000) => {
   const { url } = getApiEndpoint();
-  const fullUrl = action ? `${url}&action=${action}${extraParams}` : url;
+  const fullUrl = action ? `${url}?action=${action}${extraParams}` : url;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -43,24 +35,19 @@ const fetchJson = async (action = '', extraParams = '', timeoutMs = 25000) => {
     clearTimeout(timer);
 
     if (!response.ok) {
-      throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
+      throw new Error('Servicio no disponible temporalmente.');
     }
     const data = await response.json();
     return data;
   } catch (error) {
     clearTimeout(timer);
-    if (error.name === 'AbortError') {
-      console.warn(`Xtream API Timeout [${action}] after ${timeoutMs}ms`);
-      throw new Error('Tiempo de espera agotado al conectar con el servidor IPTV.');
-    }
-    console.error(`Xtream API Error [${action}]:`, error);
-    throw error;
+    throw new Error('No se pudo conectar con el servicio de televisión.');
   }
 };
 
 /**
  * Batch Helper to fetch categories sequentially in small chunks (max 3 concurrent)
- * Prevents triggering Nginx rate-limiting / 404 DDoS blocks
+ * Prevents triggering rate-limiting or server load blocks
  */
 const batchFetchCategoryStreams = async (categories, fetchStreamFn, batchSize = 3, delayMs = 60) => {
   const allResults = [];
@@ -117,8 +104,7 @@ export const getAllLiveStreams = async (categories = []) => {
 };
 
 export const getLiveStreamUrl = (streamId) => {
-  const { server, user, pass } = getCredentials();
-  return `${server}/live/${user}/${pass}/${streamId}.m3u8`;
+  return `/api_stream/live/${streamId}.m3u8`;
 };
 
 /**
@@ -160,9 +146,8 @@ export const getVodInfo = async (vodId) => {
 };
 
 export const getMovieStreamUrl = (streamId, containerExtension = 'mp4') => {
-  const { server, user, pass } = getCredentials();
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  return `${server}/movie/${user}/${pass}/${streamId}.${ext}`;
+  return `/api_stream/movie/${streamId}.${ext}`;
 };
 
 /**
@@ -204,7 +189,6 @@ export const getSeriesInfo = async (seriesId) => {
 };
 
 export const getEpisodeStreamUrl = (streamId, containerExtension = 'mp4') => {
-  const { server, user, pass } = getCredentials();
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  return `${server}/series/${user}/${pass}/${streamId}.${ext}`;
+  return `/api_stream/series/${streamId}.${ext}`;
 };

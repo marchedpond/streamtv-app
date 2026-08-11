@@ -60,7 +60,7 @@ export default function Header({ accountInfo, activeTab, setActiveTab }) {
         <div className="flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl">
           <User className="w-3.5 h-3.5 text-red-500" />
           <span className="font-semibold text-neutral-200">
-            {accountInfo?.user_info?.username || 'Usuario'}
+            Cliente StreamTV
           </span>
           <span className="text-[10px] text-emerald-400 flex items-center gap-1">
             <ShieldCheck className="w-3 h-3" /> Activo
