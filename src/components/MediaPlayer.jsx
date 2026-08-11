@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X } from 'lucide-react';
+import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, MessageSquare, Check } from 'lucide-react';
 
 export default function MediaPlayer({
   itemData,
@@ -22,6 +22,14 @@ export default function MediaPlayer({
   const [errorMsg, setErrorMsg] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
+  // Audio & Subtitle Tracks State
+  const [audioTracks, setAudioTracks] = useState([]);
+  const [selectedAudioTrack, setSelectedAudioTrack] = useState(-1);
+  const [subtitleTracks, setSubtitleTracks] = useState([]);
+  const [selectedSubtitleTrack, setSelectedSubtitleTrack] = useState(-1);
+  const [showAudioSubMenu, setShowAudioSubMenu] = useState(false);
+  const [activeMenuTab, setActiveMenuTab] = useState('audio'); // 'audio' or 'subtitles'
+
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -33,8 +41,10 @@ export default function MediaPlayer({
     setShowControls(true);
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 4000);
+      if (!showAudioSubMenu) {
+        setShowControls(false);
+      }
+    }, 4500);
   };
 
   useEffect(() => {
@@ -42,7 +52,7 @@ export default function MediaPlayer({
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
-  }, []);
+  }, [showAudioSubMenu]);
 
   // Helper to send progress to history service
   const triggerSaveProgress = useCallback(
@@ -76,6 +86,26 @@ export default function MediaPlayer({
     }
   };
 
+  // Switch Audio Track
+  const handleSelectAudioTrack = (trackId) => {
+    setSelectedAudioTrack(trackId);
+    if (hlsRef.current) {
+      hlsRef.current.audioTrack = trackId;
+    }
+  };
+
+  // Switch Subtitle Track
+  const handleSelectSubtitleTrack = (trackId) => {
+    setSelectedSubtitleTrack(trackId);
+    if (hlsRef.current) {
+      hlsRef.current.subtitleTrack = trackId;
+    } else if (videoRef.current && videoRef.current.textTracks) {
+      Array.from(videoRef.current.textTracks).forEach((t, idx) => {
+        t.mode = idx === trackId ? 'showing' : 'disabled';
+      });
+    }
+  };
+
   // Initialize Video & Hls.js
   useEffect(() => {
     const video = videoRef.current;
@@ -84,6 +114,10 @@ export default function MediaPlayer({
     setErrorMsg(null);
     setIsLoadingVideo(true);
     setRetryCount(0);
+    setAudioTracks([]);
+    setSubtitleTracks([]);
+    setSelectedAudioTrack(-1);
+    setSelectedSubtitleTrack(-1);
 
     const isHlsStream = streamUrl.includes('.m3u8') || streamUrl.includes('/live/');
 
@@ -93,7 +127,6 @@ export default function MediaPlayer({
       }
     };
 
-    // If stream URL is HTTP and running on HTTPS (Vercel), proxy via /api_raw_proxy
     let effectiveStreamUrl = streamUrl;
     if (window.location.protocol === 'https:' && streamUrl.startsWith('http:')) {
       effectiveStreamUrl = `/api_raw_proxy?url=${encodeURIComponent(streamUrl)}`;
@@ -111,7 +144,6 @@ export default function MediaPlayer({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
         maxBufferHole: 0.5,
-        // Intercept all HTTP segment requests on HTTPS pages to prevent Mixed Content errors
         xhrSetup: (xhr, url) => {
           if (window.location.protocol === 'https:' && url.startsWith('http:')) {
             const proxyUrl = `/api_raw_proxy?url=${encodeURIComponent(url)}`;
@@ -127,13 +159,35 @@ export default function MediaPlayer({
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         seekToInitial();
         video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
+
+        if (hls.audioTracks && hls.audioTracks.length > 0) {
+          setAudioTracks(hls.audioTracks);
+          setSelectedAudioTrack(hls.audioTrack);
+        }
+        if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
+          setSubtitleTracks(hls.subtitleTracks);
+          setSelectedSubtitleTrack(hls.subtitleTrack);
+        }
+      });
+
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
+        if (data && data.audioTracks && data.audioTracks.length > 0) {
+          setAudioTracks(data.audioTracks);
+          setSelectedAudioTrack(hls.audioTrack);
+        }
+      });
+
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
+        if (data && data.subtitleTracks && data.subtitleTracks.length > 0) {
+          setSubtitleTracks(data.subtitleTracks);
+          setSelectedSubtitleTrack(hls.subtitleTrack);
+        }
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              // Auto retry up to 3 times before displaying non-blocking error toast
               if (retryCount < 3) {
                 setRetryCount((prev) => prev + 1);
                 hls.startLoad();
@@ -155,7 +209,17 @@ export default function MediaPlayer({
       });
     } else {
       video.src = effectiveStreamUrl;
-      video.addEventListener('loadedmetadata', seekToInitial, { once: true });
+      video.addEventListener('loadedmetadata', () => {
+        seekToInitial();
+        if (video.textTracks && video.textTracks.length > 0) {
+          const subs = Array.from(video.textTracks).map((t, idx) => ({
+            id: idx,
+            name: t.label || t.language || `Subtítulo ${idx + 1}`,
+            lang: t.language || '',
+          }));
+          setSubtitleTracks(subs);
+        }
+      }, { once: true });
       video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
     }
 
@@ -274,7 +338,11 @@ export default function MediaPlayer({
         case 'Escape':
         case 'Backspace':
           e.preventDefault();
-          handleClose();
+          if (showAudioSubMenu) {
+            setShowAudioSubMenu(false);
+          } else {
+            handleClose();
+          }
           break;
         default:
           break;
@@ -283,7 +351,9 @@ export default function MediaPlayer({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, onClose]);
+  }, [isPlaying, showAudioSubMenu, onClose]);
+
+  const hasMultipleTracks = audioTracks.length > 1 || subtitleTracks.length > 0;
 
   return (
     <div
@@ -315,7 +385,6 @@ export default function MediaPlayer({
       {/* Video Loading Animation Overlay */}
       {isLoadingVideo && !errorMsg && (
         <div className="absolute inset-0 bg-neutral-950 flex flex-col items-center justify-center space-y-6 z-40 transition-opacity duration-500">
-          {/* Top-Left Close Button during Loading */}
           <button
             data-dpad-id="player-loading-close"
             onClick={handleClose}
@@ -326,10 +395,7 @@ export default function MediaPlayer({
           </button>
 
           <div className="relative flex items-center justify-center">
-            {/* Animated Pulsing Ring */}
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-red-600/20 border-t-red-600 animate-spin" />
-
-            {/* Center Brand Icon */}
             <div className="absolute w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-neutral-900 border border-neutral-800 overflow-hidden flex items-center justify-center shadow-2xl shadow-red-950/80">
               <img src="/favicon.png" alt="StreamTV Logo" className="w-full h-full object-cover animate-pulse" />
             </div>
@@ -355,7 +421,7 @@ export default function MediaPlayer({
         </div>
       )}
 
-      {/* Non-Blocking Floating Error / Reconnect Toast Banner (Top Center) */}
+      {/* Non-Blocking Floating Error / Reconnect Toast Banner */}
       {errorMsg && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-neutral-900/95 border border-red-800/80 rounded-2xl px-5 py-3 flex items-center gap-3 shadow-2xl shadow-black animate-fadeIn select-none max-w-md">
           <AlertTriangle className="w-5 h-5 text-red-500 animate-pulse flex-shrink-0" />
@@ -378,6 +444,107 @@ export default function MediaPlayer({
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* Audio & Subtitles Menu Modal Overlay */}
+      {showAudioSubMenu && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-6 animate-fadeIn">
+          <div className="glass-panel border border-neutral-700/80 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-5 relative">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Languages className="w-5 h-5 text-red-500" />
+                <h3 className="text-base font-bold text-white">Audio y Subtítulos</h3>
+              </div>
+              <button
+                data-dpad-id="player-audiosub-close"
+                onClick={() => setShowAudioSubMenu(false)}
+                className="dpad-focusable p-1.5 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Menu Tabs */}
+            <div className="flex bg-neutral-900 p-1 rounded-xl border border-neutral-800">
+              <button
+                data-dpad-id="player-tab-audio"
+                onClick={() => setActiveMenuTab('audio')}
+                className={`dpad-focusable flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  activeMenuTab === 'audio' ? 'bg-red-600 text-white shadow-md' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Idiomas de Audio ({audioTracks.length || 1})
+              </button>
+              <button
+                data-dpad-id="player-tab-subtitles"
+                onClick={() => setActiveMenuTab('subtitles')}
+                className={`dpad-focusable flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  activeMenuTab === 'subtitles' ? 'bg-red-600 text-white shadow-md' : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                Subtítulos ({subtitleTracks.length})
+              </button>
+            </div>
+
+            {/* Tab Contents */}
+            <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+              {activeMenuTab === 'audio' && (
+                audioTracks.length === 0 ? (
+                  <p className="text-xs text-neutral-500 italic py-4 text-center">Audio principal (Pista Predeterminada)</p>
+                ) : (
+                  audioTracks.map((track, idx) => (
+                    <button
+                      key={idx}
+                      data-dpad-id={`player-audio-track-${idx}`}
+                      onClick={() => handleSelectAudioTrack(idx)}
+                      className={`dpad-focusable w-full px-4 py-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                        selectedAudioTrack === idx
+                          ? 'bg-red-950/80 border-red-600 text-white'
+                          : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                      }`}
+                    >
+                      <span>{track.name || track.lang || `Idioma ${idx + 1}`}</span>
+                      {selectedAudioTrack === idx && <Check className="w-4 h-4 text-red-500" />}
+                    </button>
+                  ))
+                )
+              )}
+
+              {activeMenuTab === 'subtitles' && (
+                <>
+                  <button
+                    data-dpad-id="player-sub-track-off"
+                    onClick={() => handleSelectSubtitleTrack(-1)}
+                    className={`dpad-focusable w-full px-4 py-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                      selectedSubtitleTrack === -1
+                        ? 'bg-red-950/80 border-red-600 text-white'
+                        : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                    }`}
+                  >
+                    <span>Desactivados</span>
+                    {selectedSubtitleTrack === -1 && <Check className="w-4 h-4 text-red-500" />}
+                  </button>
+
+                  {subtitleTracks.map((track, idx) => (
+                    <button
+                      key={idx}
+                      data-dpad-id={`player-sub-track-${idx}`}
+                      onClick={() => handleSelectSubtitleTrack(idx)}
+                      className={`dpad-focusable w-full px-4 py-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                        selectedSubtitleTrack === idx
+                          ? 'bg-red-950/80 border-red-600 text-white'
+                          : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                      }`}
+                    >
+                      <span>{track.name || track.lang || `Subtítulo ${idx + 1}`}</span>
+                      {selectedSubtitleTrack === idx && <Check className="w-4 h-4 text-red-500" />}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -460,6 +627,20 @@ export default function MediaPlayer({
                 className="dpad-focusable p-3 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800"
               >
                 {isMuted ? <VolumeX className="w-5 h-5 text-red-500" /> : <Volume2 className="w-5 h-5" />}
+              </button>
+
+              {/* Audio & Subtitles Selector Button */}
+              <button
+                data-dpad-id="player-btn-audiosub"
+                onClick={() => setShowAudioSubMenu(true)}
+                className={`dpad-focusable p-3 rounded-xl transition-all cursor-pointer border ${
+                  showAudioSubMenu || hasMultipleTracks
+                    ? 'bg-red-950/90 border-red-600 text-white shadow-lg shadow-red-950/50'
+                    : 'bg-neutral-900/80 border-neutral-800 text-neutral-300 hover:bg-neutral-800'
+                }`}
+                title="Idiomas de Audio y Subtítulos"
+              >
+                <Languages className="w-5 h-5" />
               </button>
             </div>
 
