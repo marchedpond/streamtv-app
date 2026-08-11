@@ -45,7 +45,7 @@ export default async function handler(req, res) {
           AND progress_seconds > 10
           AND (duration_seconds = 0 OR progress_seconds < (duration_seconds - 30))
         ORDER BY updated_at DESC 
-        LIMIT 12;
+        LIMIT 15;
       `;
       return res.status(200).json({ success: true, history });
     }
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const {
         item_id,
-        item_type,
+        item_type = 'vod',
         title,
         subtitle,
         poster,
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, message: 'Live TV not stored in history' });
       }
 
-      const compositeId = `${item_type || 'vod'}_${item_id}`;
+      const compositeId = `${item_type}_${item_id}`;
 
       const isFinished = duration_seconds > 0 && progress_seconds >= (duration_seconds - 30);
       const isTooShort = progress_seconds <= 10;
@@ -88,8 +88,8 @@ export default async function handler(req, res) {
         INSERT INTO watch_history (
           id, item_id, item_type, title, subtitle, poster, stream_url, progress_seconds, duration_seconds, updated_at
         ) VALUES (
-          ${compositeId}, ${item_type || 'vod'}, ${item_id}, ${title || 'Sin Título'}, ${subtitle || ''}, 
-          ${poster || ''}, ${stream_url}, ${progress_seconds || 0}, ${duration_seconds || 0}, NOW()
+          ${compositeId}, ${String(item_id)}, ${String(item_type)}, ${title || 'Sin Título'}, ${subtitle || ''}, 
+          ${poster || ''}, ${stream_url}, ${Number(progress_seconds) || 0}, ${Number(duration_seconds) || 0}, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
           title = EXCLUDED.title,

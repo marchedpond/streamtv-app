@@ -1,6 +1,6 @@
 /**
  * History Service for "Continuar Viendo"
- * Handles Movies and Series left in-progress ("a medias")
+ * Syncs Movies and Series left in-progress ("a medias") across all devices using Neon PostgreSQL API
  */
 
 const LOCAL_STORAGE_KEY = 'streamtv_watch_history';
@@ -9,7 +9,6 @@ const getLocalHistory = () => {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     const list = raw ? JSON.parse(raw) : [];
-    // Filter out live TV or finished items
     return list.filter((i) => {
       const isVodOrSeries = i.item_type === 'vod' || i.item_type === 'series';
       const inProgress = i.progress_seconds > 10 && (!i.duration_seconds || i.progress_seconds < i.duration_seconds - 30);
@@ -55,7 +54,7 @@ export const fetchWatchHistory = async () => {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     const res = await fetch('/api/history', { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -106,7 +105,7 @@ export const saveWatchProgress = async (itemData) => {
 
   try {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 2000);
+    setTimeout(() => controller.abort(), 6000);
 
     await fetch('/api/history', {
       method: 'POST',
