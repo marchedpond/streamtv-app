@@ -87,15 +87,15 @@ export default function LiveTVSection({ onPlayStream }) {
   }, [filteredChannels, currentPage]);
 
   return (
-    <div className="flex-1 h-full flex overflow-hidden bg-[#141414]">
-      {/* Category List Sidebar */}
-      <div className="w-72 glass-panel border-r border-neutral-800 flex flex-col p-4 space-y-4">
+    <div className="flex-1 h-full flex flex-col md:flex-row overflow-hidden bg-[#141414]">
+      {/* Category List Sidebar (Desktop) */}
+      <div className="hidden md:flex w-72 glass-panel border-r border-neutral-800 flex-col p-4 space-y-4 flex-shrink-0">
         <div className="flex items-center gap-2 text-sm font-bold text-white uppercase tracking-wider">
           <Filter className="w-4 h-4 text-red-600" />
           <span>Categorías Live</span>
         </div>
 
-        {/* Search Bar */}
+        {/* Search Bar Desktop */}
         <div className="relative">
           <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -108,7 +108,7 @@ export default function LiveTVSection({ onPlayStream }) {
           />
         </div>
 
-        {/* Categories List */}
+        {/* Categories List Desktop */}
         <div className="flex-1 overflow-y-auto space-y-1 pr-1">
           <button
             data-dpad-id="livetv-cat-all"
@@ -149,8 +149,61 @@ export default function LiveTVSection({ onPlayStream }) {
         </div>
       </div>
 
-      {/* Center: Channels Grid/List */}
-      <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden">
+      {/* Main Content Area (Mobile + Desktop) */}
+      <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-hidden space-y-4">
+        {/* Mobile Top Controls: Search Bar & Horizontal Category Chips */}
+        <div className="flex flex-col space-y-3 md:hidden">
+          <div className="relative w-full">
+            <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              data-dpad-id="livetv-search-input-mobile"
+              type="text"
+              placeholder="Buscar canal global..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="dpad-focusable w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-neutral-500 focus:border-red-600 outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              data-dpad-id="livetv-cat-all-mobile"
+              onClick={() => {
+                setSelectedCategory('ALL');
+                setSearchQuery('');
+              }}
+              className={`dpad-focusable px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedCategory === 'ALL' && !searchQuery
+                  ? 'bg-red-600 text-white shadow-md font-bold'
+                  : 'bg-neutral-900 border border-neutral-800 text-neutral-400'
+              }`}
+            >
+              Todos los Canales
+            </button>
+
+            {categories.map((cat) => {
+              const isSelected = selectedCategory?.toString() === cat.category_id.toString() && !searchQuery;
+              return (
+                <button
+                  key={cat.category_id}
+                  data-dpad-id={`livetv-cat-mobile-${cat.category_id}`}
+                  onClick={() => {
+                    setSelectedCategory(cat.category_id);
+                    setSearchQuery('');
+                  }}
+                  className={`dpad-focusable px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-red-600 text-white font-bold shadow-md'
+                      : 'bg-neutral-900 border border-neutral-800 text-neutral-400'
+                  }`}
+                >
+                  {cat.category_name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex-1 flex items-center justify-center flex-col space-y-3">
             <RefreshCw className="w-8 h-8 text-red-600 animate-spin" />
@@ -165,17 +218,17 @@ export default function LiveTVSection({ onPlayStream }) {
         ) : (
           <div className="flex-1 flex flex-col space-y-4 overflow-hidden justify-between">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Tv className="w-5 h-5 text-red-600" />
+              <h2 className="text-sm sm:text-lg font-bold text-white flex items-center gap-2">
+                <Tv className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
                 <span>
-                  {searchQuery.trim() ? `Resultados de Búsqueda ("${searchQuery}")` : 'Canales Disponibles'}
+                  {searchQuery.trim() ? `Resultados ("${searchQuery}")` : 'Canales Disponibles'}
                 </span>
                 <span className="text-xs font-normal text-neutral-400">({filteredChannels.length})</span>
               </h2>
             </div>
 
             {/* Grid of Channels */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 pr-2 content-start">
+            <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 pr-1 content-start">
               {paginatedChannels.map((ch) => {
                 const isSelected = selectedChannel?.stream_id === ch.stream_id;
                 const iconUrl = getOptimizedImageUrl(ch.stream_icon, 150);
@@ -195,13 +248,13 @@ export default function LiveTVSection({ onPlayStream }) {
                         url: getLiveStreamUrl(ch.stream_id),
                       });
                     }}
-                    className={`dpad-focusable glass-panel p-3 rounded-2xl flex items-center gap-3 cursor-pointer border transition-all duration-200 ${
+                    className={`dpad-focusable glass-panel p-2.5 sm:p-3 rounded-2xl flex items-center gap-2.5 sm:gap-3 cursor-pointer border transition-all duration-200 ${
                       isSelected
                         ? 'border-red-600 bg-red-950/40 shadow-lg shadow-red-950/50 scale-[1.02]'
                         : 'border-neutral-800/80 hover:border-neutral-700 hover:bg-neutral-800/50'
                     }`}
                   >
-                    <div className="w-12 h-12 rounded-xl bg-neutral-900 flex items-center justify-center overflow-hidden border border-neutral-800 flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-neutral-900 flex items-center justify-center overflow-hidden border border-neutral-800 flex-shrink-0">
                       {ch.stream_icon ? (
                         <img
                           src={iconUrl}
@@ -211,7 +264,7 @@ export default function LiveTVSection({ onPlayStream }) {
                           className="w-full h-full object-contain p-1"
                         />
                       ) : null}
-                      <Tv className="w-6 h-6 text-neutral-600 hidden" />
+                      <Tv className="w-5 h-5 text-neutral-600 hidden" />
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -236,9 +289,9 @@ export default function LiveTVSection({ onPlayStream }) {
         )}
       </div>
 
-      {/* Right: Selected Channel Details Preview Card */}
+      {/* Right: Selected Channel Details Preview Card (Desktop Only) */}
       {selectedChannel && (
-        <div className="w-80 glass-panel border-l border-neutral-800 p-6 flex flex-col justify-between hidden xl:flex select-none">
+        <div className="w-80 glass-panel border-l border-neutral-800 p-6 flex flex-col justify-between hidden xl:flex select-none flex-shrink-0">
           <div className="space-y-6">
             <div className="relative aspect-video rounded-2xl bg-neutral-900 border border-neutral-800 overflow-hidden flex items-center justify-center shadow-xl">
               {selectedChannel.stream_icon ? (

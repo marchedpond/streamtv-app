@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tv, Film, Clapperboard, RefreshCw, Power, Radio, HelpCircle } from 'lucide-react';
+import { Tv, Film, Clapperboard, RefreshCw, Radio } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab, onRefresh }) {
   const menuItems = [
@@ -9,7 +9,7 @@ export default function Sidebar({ activeTab, setActiveTab, onRefresh }) {
   ];
 
   return (
-    <aside className="w-64 glass-panel border-r border-neutral-800 flex flex-col justify-between p-4 z-30 select-none">
+    <aside className="hidden md:flex w-64 glass-panel border-r border-neutral-800 flex-col justify-between p-4 z-30 select-none flex-shrink-0">
       <div className="space-y-6">
         {/* Navigation Section */}
         <div className="space-y-1">

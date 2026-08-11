@@ -129,8 +129,8 @@ export default function App() {
       {authStatus === 'loading' && (
         <div className="flex-1 flex flex-col items-center justify-center space-y-6 bg-gradient-to-b from-[#141414] to-[#0A0A0A]">
           <div className="relative">
-            <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-red-700 via-red-600 to-amber-500 flex items-center justify-center shadow-2xl shadow-red-950/80 animate-pulse">
-              <Tv className="w-12 h-12 text-white" />
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-neutral-900 overflow-hidden border border-neutral-800 flex items-center justify-center shadow-2xl shadow-red-950/80 animate-pulse">
+              <img src="/favicon.png" alt="StreamTV Logo" className="w-full h-full object-cover" />
             </div>
             <Radio className="w-6 h-6 text-red-500 absolute -top-2 -right-2 animate-ping" />
           </div>
@@ -190,7 +190,7 @@ export default function App() {
 
           {/* Main Layout (Sidebar + Content View) */}
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-            {/* Navigation Sidebar */}
+            {/* Navigation Sidebar (Desktop) */}
             <Sidebar
               activeTab={activeTab}
               setActiveTab={setActiveTab}
@@ -199,9 +199,10 @@ export default function App() {
 
             {/* Main Content Area based on Active Tab */}
             <main className="flex-1 h-full overflow-hidden flex flex-col">
-              {/* Continue Watching Section */}
+              {/* Continue Watching Section (Filtered by activeTab) */}
               <ContinueWatching
                 historyItems={historyItems}
+                activeTab={activeTab}
                 onResume={(item) =>
                   setPendingResumeStream({
                     id: item.item_id,

@@ -1,19 +1,34 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Play, Clock, Sparkles } from 'lucide-react';
 import { getOptimizedImageUrl, handleImageError } from '../utils/imageProxy';
 
-export default function ContinueWatching({ historyItems = [], onResume }) {
-  if (!historyItems || historyItems.length === 0) return null;
+export default function ContinueWatching({ historyItems = [], activeTab = 'movies', onResume }) {
+  // Do not show Continue Watching for Live TV
+  if (activeTab === 'live') return null;
+
+  // Filter items by active section ('vod' for movies, 'series' for series)
+  const targetType = activeTab === 'movies' ? 'vod' : 'series';
+
+  const filteredHistory = useMemo(() => {
+    if (!historyItems || !Array.isArray(historyItems)) return [];
+    return historyItems.filter((item) => item.item_type === targetType);
+  }, [historyItems, targetType]);
+
+  if (filteredHistory.length === 0) return null;
+
+  const sectionLabel = activeTab === 'movies' ? 'Películas' : 'Series';
 
   return (
-    <div className="space-y-3 p-6 pb-2 select-none">
+    <div className="space-y-3 p-4 sm:p-6 pb-2 select-none">
       <div className="flex items-center gap-2">
-        <Sparkles className="w-5 h-5 text-red-500 animate-pulse" />
-        <h2 className="text-lg font-bold text-white tracking-wide">Continuar Viendo</h2>
+        <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-red-500 animate-pulse" />
+        <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
+          Continuar Viendo ({sectionLabel})
+        </h2>
       </div>
 
-      <div className="flex items-center gap-4 overflow-x-auto pb-3 scrollbar-none">
-        {historyItems.map((item) => {
+      <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto pb-3 scrollbar-none">
+        {filteredHistory.map((item) => {
           const progressPercent = item.duration_seconds > 0
             ? Math.min(100, Math.max(5, (item.progress_seconds / item.duration_seconds) * 100))
             : 0;
@@ -25,7 +40,7 @@ export default function ContinueWatching({ historyItems = [], onResume }) {
               key={item.id || `${item.item_type}_${item.item_id}`}
               data-dpad-id={`continue-${item.id}`}
               onClick={() => onResume(item)}
-              className="dpad-focusable group relative w-48 sm:w-56 flex-shrink-0 bg-neutral-900 rounded-2xl border border-neutral-800/80 overflow-hidden cursor-pointer flex flex-col transition-all duration-300 transform hover:-translate-y-1 hover:border-red-600 shadow-lg"
+              className="dpad-focusable group relative w-40 sm:w-52 flex-shrink-0 bg-neutral-900 rounded-2xl border border-neutral-800/80 overflow-hidden cursor-pointer flex flex-col transition-all duration-300 transform hover:-translate-y-1 hover:border-red-600 shadow-lg"
             >
               {/* Thumbnail / Poster */}
               <div className="aspect-[16/9] w-full bg-neutral-950 relative overflow-hidden">
@@ -50,7 +65,7 @@ export default function ContinueWatching({ historyItems = [], onResume }) {
                   </div>
                 </div>
 
-                {/* Progress Bar at bottom of poster */}
+                {/* Progress Bar */}
                 <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/60">
                   <div
                     className="bg-red-600 h-full transition-all duration-300"
@@ -60,7 +75,7 @@ export default function ContinueWatching({ historyItems = [], onResume }) {
               </div>
 
               {/* Title & Info */}
-              <div className="p-3 space-y-1 bg-neutral-900/90">
+              <div className="p-2.5 sm:p-3 space-y-0.5 sm:space-y-1 bg-neutral-900/90">
                 <h3 className="text-xs font-bold text-white truncate">{item.title}</h3>
                 {item.subtitle && <p className="text-[10px] text-red-400 font-medium truncate">{item.subtitle}</p>}
                 <p className="text-[10px] text-neutral-500 font-mono">
