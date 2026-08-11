@@ -36,8 +36,10 @@ export default function MediaPlayer({
   const [volume, setVolume] = useState(1);
   const [showControls, setShowControls] = useState(true);
   const [isLoadingVideo, setIsLoadingVideo] = useState(true);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
+  const triggerSilentReloadRef = useRef(null);
 
   // Seek Ripple Animation State
   const [seekFeedback, setSeekFeedback] = useState(null);
@@ -240,6 +242,7 @@ export default function MediaPlayer({
 
     setErrorMsg(null);
     setIsLoadingVideo(true);
+    setIsBuffering(false);
     setRetryCount(0);
     setAudioTracks([]);
     setSubtitleTracks([]);
@@ -261,55 +264,131 @@ export default function MediaPlayer({
 
     setupNativeTrackListeners(video);
 
-    if (isHlsStream && Hls.isSupported()) {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
+    // Optimized HLS Config for high resilience on throttled/corporate firewalls
+    const hlsConfig = {
+      enableWorker: true,
+      lowLatencyMode: false, // Prioritize robust buffer size over sub-second latency
+      backBufferLength: 90,
+      maxBufferLength: 60,   // Store up to 60 seconds of video fragments
+      maxMaxBufferLength: 120, // Absolute max buffer limit
+      maxBufferSize: 120 * 1024 * 1024, // Up to 120MB buffer space (default 60MB)
+      maxBufferHole: 0.5,
+
+      // Live TV buffer settings to prevent playing too close to empty edge
+      liveSyncDurationCount: 5,
+      liveMaxLatencyDurationCount: 10,
+
+      // Frag / Manifest Timeouts & Retry Delays
+      fragLoadingTimeOut: 15000,
+      fragLoadingMaxRetry: 8,
+      fragLoadingRetryDelay: 1000,
+      manifestLoadingTimeOut: 15000,
+      manifestLoadingMaxRetry: 8,
+      manifestLoadingRetryDelay: 1000,
+      levelLoadingTimeOut: 15000,
+      levelLoadingMaxRetry: 8,
+      levelLoadingRetryDelay: 1000,
+
+      xhrSetup: (xhr, url) => {
+        if (window.location.protocol === 'https:' && url.startsWith('http:')) {
+          const proxyUrl = `/api_raw_proxy?url=${encodeURIComponent(url)}`;
+          xhr.open('GET', proxyUrl, true);
+        }
+      },
+    };
+
+    let networkErrorCount = 0;
+    let mediaErrorCount = 0;
+    let silentReloadsInWindow = 0;
+    let lastReloadTime = 0;
+
+    const performSilentReload = () => {
+      if (!video || !hlsRef.current) return;
+
+      const now = Date.now();
+      if (now - lastReloadTime < 25000) {
+        silentReloadsInWindow++;
+      } else {
+        silentReloadsInWindow = 1;
+      }
+      lastReloadTime = now;
+
+      if (silentReloadsInWindow > 3) {
+        console.error('Too many silent reloads within 25 seconds. Suspending auto-reconnection.');
+        setErrorMsg('Conexión inestable con el servidor multimedia. Por favor, intente de nuevo.');
+        setIsLoadingVideo(false);
+        setIsBuffering(false);
+        return;
       }
 
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        maxBufferHole: 0.5,
-        xhrSetup: (xhr, url) => {
-          if (window.location.protocol === 'https:' && url.startsWith('http:')) {
-            const proxyUrl = `/api_raw_proxy?url=${encodeURIComponent(url)}`;
-            xhr.open('GET', proxyUrl, true);
-          }
-        },
-      });
+      const currentTimeBeforeReload = video.currentTime;
+      console.log(`[Resilience] Performing silent rebuild of HLS.js at position ${currentTimeBeforeReload}s...`);
+      setIsBuffering(true);
 
+      // Destroy current instance
+      hlsRef.current.destroy();
+
+      // Create new instance
+      const hls = new Hls(hlsConfig);
       hlsRef.current = hls;
+
       hls.loadSource(effectiveStreamUrl);
       hls.attachMedia(video);
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        seekToInitial();
-        video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
+      hls.once(Hls.Events.MANIFEST_PARSED, () => {
+        console.log(`[Resilience] Manifest parsed after silent rebuild, resuming at ${currentTimeBeforeReload}s...`);
+        video.currentTime = currentTimeBeforeReload;
+        video.play()
+          .then(() => {
+            setIsLoadingVideo(false);
+            setIsBuffering(false);
+          })
+          .catch(() => {
+            setIsPlaying(false);
+            setIsBuffering(false);
+          });
+      });
 
-        if (hls.audioTracks && hls.audioTracks.length > 0) {
-          const formattedAudio = hls.audioTracks.map((t, idx) => ({
+      setupHlsEvents(hls);
+    };
+
+    // Expose reload function to outside effects (like watchdog) via ref
+    triggerSilentReloadRef.current = performSilentReload;
+
+    const setupHlsEvents = (hlsInstance) => {
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        seekToInitial();
+        video.play()
+          .then(() => {
+            setIsLoadingVideo(false);
+            setIsBuffering(false);
+          })
+          .catch(() => {
+            setIsPlaying(false);
+            setIsLoadingVideo(false);
+          });
+
+        if (hlsInstance.audioTracks && hlsInstance.audioTracks.length > 0) {
+          const formattedAudio = hlsInstance.audioTracks.map((t, idx) => ({
             id: idx,
             name: t.name || (t.lang ? `Audio (${t.lang.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
             lang: t.lang || '',
           }));
           setAudioTracks(formattedAudio);
-          setSelectedAudioTrack(hls.audioTrack >= 0 ? hls.audioTrack : 0);
+          setSelectedAudioTrack(hlsInstance.audioTrack >= 0 ? hlsInstance.audioTrack : 0);
         }
-        if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
-          const formattedSub = hls.subtitleTracks.map((t, idx) => ({
+        if (hlsInstance.subtitleTracks && hlsInstance.subtitleTracks.length > 0) {
+          const formattedSub = hlsInstance.subtitleTracks.map((t, idx) => ({
             id: idx,
             name: t.name || (t.lang ? `Subtítulo (${t.lang.toUpperCase()})` : `Subtítulo ${idx + 1}`),
             lang: t.lang || '',
           }));
           setSubtitleTracks(formattedSub);
-          setSelectedSubtitleTrack(hls.subtitleTrack);
+          setSelectedSubtitleTrack(hlsInstance.subtitleTrack);
         }
       });
 
-      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
+      hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
         if (data && data.audioTracks && data.audioTracks.length > 0) {
           const formattedAudio = data.audioTracks.map((t, idx) => ({
             id: idx,
@@ -317,11 +396,11 @@ export default function MediaPlayer({
             lang: t.lang || '',
           }));
           setAudioTracks(formattedAudio);
-          setSelectedAudioTrack(hls.audioTrack >= 0 ? hls.audioTrack : 0);
+          setSelectedAudioTrack(hlsInstance.audioTrack >= 0 ? hlsInstance.audioTrack : 0);
         }
       });
 
-      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
+      hlsInstance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
         if (data && data.subtitleTracks && data.subtitleTracks.length > 0) {
           const formattedSub = data.subtitleTracks.map((t, idx) => ({
             id: idx,
@@ -329,37 +408,67 @@ export default function MediaPlayer({
             lang: t.lang || '',
           }));
           setSubtitleTracks(formattedSub);
-          setSelectedSubtitleTrack(hls.subtitleTrack);
+          setSelectedSubtitleTrack(hlsInstance.subtitleTrack);
         }
       });
 
-      hls.on(Hls.Events.ERROR, (event, data) => {
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              if (retryCount < 3) {
-                setRetryCount((prev) => prev + 1);
-                hls.startLoad();
+              if (networkErrorCount < 5) {
+                networkErrorCount++;
+                console.warn(`[Resilience] Fatal Network Error. Retrying Hls.startLoad() (${networkErrorCount}/5)...`, data);
+                hlsInstance.startLoad();
               } else {
-                setErrorMsg('Conexión inestable con el servidor de la señal.');
-                setIsLoadingVideo(false);
+                console.warn('[Resilience] Fatal Network Error limit reached. Initiating silent rebuild...', data);
+                networkErrorCount = 0;
+                performSilentReload();
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
+              if (mediaErrorCount < 3) {
+                mediaErrorCount++;
+                console.warn(`[Resilience] Fatal Media Error. Retrying Hls.recoverMediaError() (${mediaErrorCount}/3)...`, data);
+                hlsInstance.recoverMediaError();
+              } else {
+                console.warn('[Resilience] Media Error limit reached. Swapping audio codec and recovering...', data);
+                hlsInstance.swapAudioCodec();
+                hlsInstance.recoverMediaError();
+                mediaErrorCount = 0;
+              }
               break;
             default:
-              setErrorMsg('Ocurrió una interrupción temporal en la señal.');
-              setIsLoadingVideo(false);
-              hls.destroy();
+              console.error('[Resilience] Fatal unrecoverable HLS error. Performing silent rebuild...', data);
+              performSilentReload();
               break;
           }
         }
       });
+    };
+
+    if (isHlsStream && Hls.isSupported()) {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+      }
+
+      const hls = new Hls(hlsConfig);
+      hlsRef.current = hls;
+      hls.loadSource(effectiveStreamUrl);
+      hls.attachMedia(video);
+      setupHlsEvents(hls);
     } else {
       video.src = effectiveStreamUrl;
       video.addEventListener('loadedmetadata', seekToInitial, { once: true });
-      video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
+      video.play()
+        .then(() => {
+          setIsLoadingVideo(false);
+          setIsBuffering(false);
+        })
+        .catch(() => {
+          setIsPlaying(false);
+          setIsLoadingVideo(false);
+        });
     }
 
     return () => {
@@ -367,8 +476,30 @@ export default function MediaPlayer({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      triggerSilentReloadRef.current = null;
     };
   }, [streamUrl, initialTime]);
+
+  // Watchdog para detectar bloqueos (stalling) en buffering superior a 15 segundos
+  useEffect(() => {
+    let stallTimeout = null;
+
+    if (isBuffering && isPlaying && !isLoadingVideo && !errorMsg) {
+      console.log('[Resilience] Player in buffering state. Starting 15s stall watchdog...');
+      stallTimeout = setTimeout(() => {
+        if (triggerSilentReloadRef.current) {
+          console.warn('[Resilience] Buffering stalled for 15s. Triggering automatic reconnect...');
+          triggerSilentReloadRef.current();
+        }
+      }, 15000);
+    }
+
+    return () => {
+      if (stallTimeout) {
+        clearTimeout(stallTimeout);
+      }
+    };
+  }, [isBuffering, isPlaying, isLoadingVideo, errorMsg]);
 
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -530,15 +661,28 @@ export default function MediaPlayer({
         onPlaying={() => {
           setIsPlaying(true);
           setIsLoadingVideo(false);
+          setIsBuffering(false);
         }}
-        onCanPlay={() => setIsLoadingVideo(false)}
-        onLoadedData={() => setIsLoadingVideo(false)}
+        onCanPlay={() => {
+          setIsLoadingVideo(false);
+          setIsBuffering(false);
+        }}
+        onLoadedData={() => {
+          setIsLoadingVideo(false);
+          setIsBuffering(false);
+        }}
+        onWaiting={() => setIsBuffering(true)}
+        onSeeking={() => setIsBuffering(true)}
+        onSeeked={() => setIsBuffering(false)}
+        onStalled={() => setIsBuffering(true)}
         onEnded={() => {
           setIsPlaying(false);
+          setIsBuffering(false);
           if (videoRef.current) triggerSaveProgress(videoRef.current.currentTime, videoRef.current.duration);
         }}
         onError={() => {
           setIsLoadingVideo(false);
+          setIsBuffering(false);
           setErrorMsg('Reconectando señal de transmisión...');
         }}
         className="w-full h-full object-contain"
@@ -601,6 +745,22 @@ export default function MediaPlayer({
           >
             Cancelar Reproducción
           </button>
+        </div>
+      )}
+
+      {/* Buffering Overlay (Glassmorphism design) */}
+      {isBuffering && !isLoadingVideo && !errorMsg && (
+        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-30 bg-black/30 backdrop-blur-[2px] transition-all animate-fadeIn">
+          <div className="flex flex-col items-center justify-center p-6 rounded-3xl bg-neutral-950/80 border border-neutral-800/80 shadow-2xl text-center space-y-4 max-w-xs">
+            <div className="relative flex items-center justify-center">
+              <div className="w-14 h-14 rounded-full border-4 border-red-600/20 border-t-red-600 animate-spin" />
+              <Tv className="absolute w-5 h-5 text-red-500 animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-white tracking-wide">Optimizando buffer...</p>
+              <p className="text-[11px] text-neutral-400">Recuperando fragmentos en red lenta</p>
+            </div>
+          </div>
         </div>
       )}
 

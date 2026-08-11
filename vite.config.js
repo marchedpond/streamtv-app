@@ -3,9 +3,16 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const iptvServer = (env.VITE_IPTV_SERVER || 'http://reydereyes.xyz:8080').replace(/\/+$/, '');
-  const iptvUser = env.VITE_IPTV_USER || 'JosueMejia';
-  const iptvPass = env.VITE_IPTV_PASS || 'PPw3tAhK4P';
+  const iptvServer = (env.VITE_IPTV_SERVER || '').replace(/\/+$/, '');
+  const iptvUser = env.VITE_IPTV_USER || '';
+  const iptvPass = env.VITE_IPTV_PASS || '';
+
+  if (!iptvServer || !iptvUser || !iptvPass) {
+    console.warn(
+      '\x1b[33m%s\x1b[0m',
+      '⚠️  [WARNING] Faltan variables de entorno IPTV (VITE_IPTV_SERVER, VITE_IPTV_USER o VITE_IPTV_PASS). Por favor crea o configura tu archivo .env local.'
+    );
+  }
 
   return {
     plugins: [react()],
