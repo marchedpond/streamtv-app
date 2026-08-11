@@ -4,17 +4,17 @@ import { Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, 
 
 const Rewind10Icon = ({ className = 'w-6 h-6' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 4a8 8 0 1 0 7.8 6" />
-    <polyline points="12 1 12 5 16 5" />
-    <text x="11.5" y="15" textAnchor="middle" fontSize="7.5" fontWeight="900" fill="currentColor" stroke="none" fontFamily="sans-serif">10</text>
+    <path d="M12 3a9 9 0 1 0 7 3.5" />
+    <polyline points="12 1 8 4 12 7" />
+    <text x="12" y="15" textAnchor="middle" fontSize="6.5" fontWeight="900" fill="currentColor" stroke="none" fontFamily="sans-serif">-10</text>
   </svg>
 );
 
 const Forward10Icon = ({ className = 'w-6 h-6' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 4a8 8 0 1 1 -7.8 6" />
-    <polyline points="12 1 12 5 8 5" />
-    <text x="12.5" y="15" textAnchor="middle" fontSize="7.5" fontWeight="900" fill="currentColor" stroke="none" fontFamily="sans-serif">10</text>
+    <path d="M12 3a9 9 0 1 1 -7 3.5" />
+    <polyline points="12 1 16 4 12 7" />
+    <text x="12" y="15" textAnchor="middle" fontSize="6.5" fontWeight="900" fill="currentColor" stroke="none" fontFamily="sans-serif">+10</text>
   </svg>
 );
 
@@ -351,6 +351,15 @@ export default function MediaPlayer({
     seekFeedbackTimeoutRef.current = setTimeout(() => {
       setSeekFeedback(null);
     }, 750);
+  };
+
+  const handleTimelineSeek = (e) => {
+    const targetTime = parseFloat(e.target.value);
+    if (!videoRef.current || isNaN(targetTime)) return;
+    videoRef.current.currentTime = targetTime;
+    setCurrentTime(targetTime);
+    setProgress(duration ? (targetTime / duration) * 100 : 0);
+    triggerSaveProgress(targetTime, duration);
   };
 
   const toggleMute = () => {
@@ -718,16 +727,23 @@ export default function MediaPlayer({
 
         {/* Bottom Bar: Timeline & Controls */}
         <div className="space-y-4">
-          {/* Seek Progress Bar if Duration available */}
+          {/* Interactive Timeline Progress Bar Slider */}
           {duration > 0 && (
-            <div className="space-y-1">
-              <div className="w-full bg-neutral-800 h-2 rounded-full overflow-hidden relative cursor-pointer">
-                <div
-                  className="bg-red-600 h-full rounded-full transition-all duration-150"
-                  style={{ width: `${progress}%` }}
+            <div className="space-y-1 group">
+              <div className="relative w-full flex items-center">
+                <input
+                  type="range"
+                  min="0"
+                  max={duration || 100}
+                  step="1"
+                  value={currentTime || 0}
+                  onChange={handleTimelineSeek}
+                  data-dpad-id="player-timeline-slider"
+                  className="dpad-focusable w-full accent-red-600 h-2 bg-neutral-800 rounded-full cursor-pointer appearance-none transition-all hover:h-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  title="Deslizar para adelantar o retroceder"
                 />
               </div>
-              <div className="flex justify-between text-xs text-neutral-400 font-mono">
+              <div className="flex justify-between text-xs text-neutral-400 font-mono pt-1">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>
               </div>
@@ -764,15 +780,15 @@ export default function MediaPlayer({
               </span>
             </div>
 
-            {/* Center: Main Playback Controls (Rewind 10, Play/Pause, Forward 10) */}
+            {/* Center: Main Playback Controls (Rewind -10, Play/Pause, Forward +10) */}
             <div className="flex items-center gap-4">
               <button
                 data-dpad-id="player-btn-rewind"
                 onClick={() => seek(-10)}
-                className="dpad-focusable p-3 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
+                className="dpad-focusable p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
                 title="Retroceder 10 segundos"
               >
-                <Rewind10Icon className="w-6 h-6 text-neutral-300" />
+                <Rewind10Icon className="w-6 h-6 text-neutral-200" />
               </button>
 
               <button
@@ -787,10 +803,10 @@ export default function MediaPlayer({
               <button
                 data-dpad-id="player-btn-forward"
                 onClick={() => seek(10)}
-                className="dpad-focusable p-3 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
+                className="dpad-focusable p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
                 title="Adelantar 10 segundos"
               >
-                <Forward10Icon className="w-6 h-6 text-neutral-300" />
+                <Forward10Icon className="w-6 h-6 text-neutral-200" />
               </button>
             </div>
 

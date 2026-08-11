@@ -24,9 +24,7 @@ export function useDPadNavigation({ activeZone = 'main', onBack = null, isPlayer
   // Spatial Navigation logic based on 2D bounding boxes
   const moveFocus = useCallback(
     (direction) => {
-      if (isPlayerOpen) return;
-
-      // If a modal overlay is active, constrain D-Pad navigation to focusables INSIDE the modal
+      // If a modal overlay or video player is active, constrain D-Pad navigation to focusables INSIDE the overlay
       const activeModal = document.querySelector('.fixed.inset-0.z-50');
       let focusables = [];
 
