@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check, PictureInPicture } from 'lucide-react';
 
 const Rewind10Icon = ({ className = 'w-6 h-6' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -107,6 +107,20 @@ export default function MediaPlayer({
     }
   };
 
+  // Picture-in-Picture (PiP) Toggle Handler
+  const togglePictureInPicture = async () => {
+    if (!videoRef.current) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (document.pictureInPictureEnabled) {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.error('Picture-in-Picture error:', err);
+    }
+  };
+
   // Volume Slider Handler
   const handleVolumeChange = (newVol) => {
     setVolume(newVol);
@@ -187,6 +201,37 @@ export default function MediaPlayer({
       updateTextTracks();
     }
   };
+
+  // MediaSession API Integration for Background & Lock Screen Playback
+  useEffect(() => {
+    if ('mediaSession' in navigator && title) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: title || 'StreamTV Transmisión',
+        artist: subtitle || 'StreamTV IPTV',
+        album: 'StreamTV Player',
+        artwork: [
+          { src: itemData?.poster || itemData?.stream_icon || '/favicon.png', sizes: '512x512', type: 'image/png' },
+        ],
+      });
+
+      try {
+        navigator.mediaSession.setActionHandler('play', () => {
+          if (videoRef.current) videoRef.current.play();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          if (videoRef.current) videoRef.current.pause();
+        });
+        navigator.mediaSession.setActionHandler('seekbackward', () => {
+          seek(-10);
+        });
+        navigator.mediaSession.setActionHandler('seekforward', () => {
+          seek(10);
+        });
+      } catch (e) {
+        // Fallback for browsers with partial MediaSession support
+      }
+    }
+  }, [title, subtitle, itemData]);
 
   // Initialize Video & Hls.js
   useEffect(() => {
@@ -750,7 +795,7 @@ export default function MediaPlayer({
             </div>
           )}
 
-          {/* Action Buttons: Left (Volume), Center (Play/Rewind/Forward), Right (Audio & Subtitles, Fullscreen) */}
+          {/* Action Buttons: Left (Volume), Center (Play/Rewind/Forward), Right (Audio & Subtitles, PiP, Fullscreen) */}
           <div className="flex items-center justify-between gap-4">
             {/* Left: Volume Control with Level Indicator & Slider */}
             <div className="flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-2 rounded-2xl">
@@ -810,8 +855,8 @@ export default function MediaPlayer({
               </button>
             </div>
 
-            {/* Right: Audio & Subtitles Button with Label + Fullscreen */}
-            <div className="flex items-center gap-3">
+            {/* Right: Audio & Subtitles Button + Picture-in-Picture + Fullscreen */}
+            <div className="flex items-center gap-2.5">
               <button
                 data-dpad-id="player-btn-audiosub"
                 onClick={() => setShowAudioSubMenu(true)}
@@ -827,9 +872,18 @@ export default function MediaPlayer({
               </button>
 
               <button
+                data-dpad-id="player-btn-pip"
+                onClick={togglePictureInPicture}
+                className="dpad-focusable p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
+                title="Ventana Flotante / Picture-in-Picture (Segundo Plano)"
+              >
+                <PictureInPicture className="w-5 h-5" />
+              </button>
+
+              <button
                 data-dpad-id="player-btn-fullscreen"
                 onClick={toggleFullscreen}
-                className="dpad-focusable p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800"
+                className="dpad-focusable p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
                 title="Pantalla Completa"
               >
                 <Maximize className="w-5 h-5" />
