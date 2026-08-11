@@ -22,6 +22,10 @@ export default function MediaPlayer({
   const [errorMsg, setErrorMsg] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
 
+  // Seek Ripple Animation State
+  const [seekFeedback, setSeekFeedback] = useState(null);
+  const seekFeedbackTimeoutRef = useRef(null);
+
   // Audio & Subtitle Tracks State
   const [audioTracks, setAudioTracks] = useState([]);
   const [selectedAudioTrack, setSelectedAudioTrack] = useState(-1);
@@ -310,6 +314,16 @@ export default function MediaPlayer({
     const newTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + seconds));
     videoRef.current.currentTime = newTime;
     triggerSaveProgress(newTime, videoRef.current.duration);
+
+    // Trigger Screen Ripple Animation Feedback
+    const type = seconds < 0 ? 'rewind' : 'forward';
+    const label = seconds < 0 ? `${seconds}s` : `+${seconds}s`;
+    setSeekFeedback({ type, label, id: Date.now() });
+
+    if (seekFeedbackTimeoutRef.current) clearTimeout(seekFeedbackTimeoutRef.current);
+    seekFeedbackTimeoutRef.current = setTimeout(() => {
+      setSeekFeedback(null);
+    }, 750);
   };
 
   const toggleMute = () => {
@@ -448,6 +462,25 @@ export default function MediaPlayer({
         autoPlay
         playsInline
       />
+
+      {/* On-Screen Seek Ripple Animation Overlay */}
+      {seekFeedback && (
+        <div className="absolute inset-0 pointer-events-none z-35 flex items-center justify-between px-8 sm:px-16 overflow-hidden">
+          {seekFeedback.type === 'rewind' ? (
+            <div key={seekFeedback.id} className="flex items-center gap-2.5 bg-neutral-950/85 border border-red-600/50 text-white font-bold px-6 py-4 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/80 animate-fadeIn scale-105 select-none">
+              <RotateCcw className="w-7 h-7 text-red-500 animate-spin" />
+              <span className="text-lg font-mono font-bold tracking-wider text-red-400">{seekFeedback.label}</span>
+            </div>
+          ) : <div />}
+
+          {seekFeedback.type === 'forward' ? (
+            <div key={seekFeedback.id} className="flex items-center gap-2.5 bg-neutral-950/85 border border-red-600/50 text-white font-bold px-6 py-4 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/80 animate-fadeIn scale-105 select-none">
+              <span className="text-lg font-mono font-bold tracking-wider text-red-400">{seekFeedback.label}</span>
+              <RotateCw className="w-7 h-7 text-red-500 animate-spin" />
+            </div>
+          ) : <div />}
+        </div>
+      )}
 
       {/* Video Loading Animation Overlay */}
       {isLoadingVideo && !errorMsg && (
@@ -686,17 +719,21 @@ export default function MediaPlayer({
               <button
                 data-dpad-id="player-btn-rewind"
                 onClick={() => seek(-10)}
-                className="dpad-focusable p-3 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800"
+                className="dpad-focusable px-3 py-2.5 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800 flex items-center gap-1.5"
+                title="Retroceder 10 segundos"
               >
                 <RotateCcw className="w-5 h-5" />
+                <span className="text-[11px] font-bold font-mono text-neutral-300">-10s</span>
               </button>
 
               <button
                 data-dpad-id="player-btn-forward"
                 onClick={() => seek(10)}
-                className="dpad-focusable p-3 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800"
+                className="dpad-focusable px-3 py-2.5 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800 flex items-center gap-1.5"
+                title="Adelantar 10 segundos"
               >
                 <RotateCw className="w-5 h-5" />
+                <span className="text-[11px] font-bold font-mono text-neutral-300">+10s</span>
               </button>
 
               <button
