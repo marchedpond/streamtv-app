@@ -56,6 +56,37 @@ export default function MediaPlayer({
   const [showAudioSubMenu, setShowAudioSubMenu] = useState(false);
   const [activeMenuTab, setActiveMenuTab] = useState('audio');
 
+  // Proxy Subtitle Tracks for VOD/Series
+  const [proxySubtitleTracks, setProxySubtitleTracks] = useState([]);
+  const [trackTransition, setTrackTransition] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    if (itemData && (itemData.type === 'vod' || itemData.type === 'series')) {
+      const streamId = itemData.id;
+      const streamType = itemData.type;
+      const containerExt = itemData.container_extension || 'mkv';
+
+      fetch(`/api_subtitles?id=${streamId}&type=${streamType}&action=tracks&ext=${containerExt}`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          if (active) {
+            setProxySubtitleTracks(data);
+          }
+        })
+        .catch((err) => {
+          console.error('Error fetching proxy subtitles:', err);
+          if (active) setProxySubtitleTracks([]);
+        });
+    } else {
+      setProxySubtitleTracks([]);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [itemData]);
+
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -138,14 +169,35 @@ export default function MediaPlayer({
 
   // Switch Audio Track
   const handleSelectAudioTrack = (trackId) => {
+    const track = audioTracks.find(t => t.id === trackId);
+    const trackName = track ? track.name : `Pista ${trackId + 1}`;
+
+    const video = videoRef.current;
+    let wasPlaying = isPlaying;
+    if (video) {
+      video.pause();
+    }
+    setIsPlaying(false);
+
+    setTrackTransition({ type: 'audio', name: trackName });
+
     setSelectedAudioTrack(trackId);
     if (hlsRef.current) {
       hlsRef.current.audioTrack = trackId;
-    } else if (videoRef.current && videoRef.current.audioTracks) {
-      Array.from(videoRef.current.audioTracks).forEach((t, idx) => {
+    } else if (video && video.audioTracks) {
+      Array.from(video.audioTracks).forEach((t, idx) => {
         t.enabled = idx === trackId;
       });
     }
+
+    setTimeout(() => {
+      setTrackTransition(null);
+      if (video && wasPlaying) {
+        video.play()
+          .then(() => setIsPlaying(true))
+          .catch(() => setIsPlaying(false));
+      }
+    }, 1200);
   };
 
   // Sync Audio and Subtitle tracks from Hls.js and native video element
@@ -246,9 +298,23 @@ export default function MediaPlayer({
 
   // Switch Subtitle Track
   const handleSelectSubtitleTrack = (trackId) => {
-    setSelectedSubtitleTrack(trackId);
+    let trackName = 'Desactivados';
+    if (trackId !== -1) {
+      const track = subtitleTracks.find(t => t.id === trackId);
+      trackName = track ? track.name : 'Activados';
+    }
 
     const video = videoRef.current;
+    let wasPlaying = isPlaying;
+    if (video) {
+      video.pause();
+    }
+    setIsPlaying(false);
+
+    setTrackTransition({ type: 'subtitle', name: trackName });
+
+    setSelectedSubtitleTrack(trackId);
+
     if (video && video.textTracks) {
       // Disable all native tracks to prevent overlap
       Array.from(video.textTracks).forEach((t) => {
@@ -281,6 +347,15 @@ export default function MediaPlayer({
         subTracks[idx].mode = 'showing';
       }
     }
+
+    setTimeout(() => {
+      setTrackTransition(null);
+      if (video && wasPlaying) {
+        video.play()
+          .then(() => setIsPlaying(true))
+          .catch(() => setIsPlaying(false));
+      }
+    }, 1200);
   };
 
   // Sync Native Video Audio & Subtitle Tracks
@@ -368,11 +443,14 @@ export default function MediaPlayer({
       maxBufferLength: 60,   // Store up to 60 seconds of video fragments
       maxMaxBufferLength: 120, // Absolute max buffer limit
       maxBufferSize: 120 * 1024 * 1024, // Up to 120MB buffer space (default 60MB)
-      maxBufferHole: 0.5,
+      maxBufferHole: 2.0,    // Jump over up to 2s gaps instead of stalling or dropping frames
+      maxAudioFramesDrift: 3.0, // Tolerates timestamp drift to fix stuttering audio
 
       // Live TV buffer settings to prevent playing too close to empty edge
-      liveSyncDurationCount: 5,
-      liveMaxLatencyDurationCount: 10,
+      liveSyncDurationCount: 7, // 7 segments behind live edge to prevent dry buffer states
+      liveMaxLatencyDurationCount: 14,
+      nudgeMaxRetries: 10,   // Increase nudge retries for timestamp gaps
+      nudgeDelay: 0.2,       // Slow down nudging to let decoder stabilize
 
       // Frag / Manifest Timeouts & Retry Delays
       fragLoadingTimeOut: 15000,
@@ -740,6 +818,7 @@ export default function MediaPlayer({
       {/* HTML5 Video Element */}
       <video
         ref={videoRef}
+        crossOrigin="anonymous"
         referrerPolicy="no-referrer"
         onTimeUpdate={handleTimeUpdate}
         onPlay={() => setIsPlaying(true)}
@@ -771,10 +850,20 @@ export default function MediaPlayer({
           setIsBuffering(false);
           setErrorMsg('Reconectando señal de transmisión...');
         }}
-        className="w-full h-full object-contain"
+        className={`w-full h-full object-contain ${showControls || showAudioSubMenu ? 'subtitles-up' : ''}`}
         autoPlay
         playsInline
-      />
+      >
+        {proxySubtitleTracks.map((track) => (
+          <track
+            key={track.id}
+            kind="subtitles"
+            src={`/api_subtitles?id=${itemData.id}&type=${itemData.type}&action=vtt&track=${track.id}&ext=${itemData.container_extension || 'mkv'}`}
+            srcLang={track.lang}
+            label={track.name}
+          />
+        ))}
+      </video>
 
       {/* On-Screen Seek Ripple Animation Overlay (Centered in Screen) */}
       {seekFeedback && (
@@ -845,6 +934,26 @@ export default function MediaPlayer({
             <div className="space-y-1">
               <p className="text-sm font-bold text-white tracking-wide">Optimizando buffer...</p>
               <p className="text-[11px] text-neutral-400">Recuperando fragmentos en red lenta</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Track Switching Transition Overlay */}
+      {trackTransition && (
+        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-45 bg-black/60 backdrop-blur-[3px] transition-all animate-fadeIn">
+          <div className="flex flex-col items-center justify-center p-6 rounded-3xl bg-neutral-950/85 border border-red-800/40 shadow-2xl text-center space-y-4 max-w-sm">
+            <div className="relative flex items-center justify-center">
+              <div className="w-14 h-14 rounded-full border-4 border-red-600/20 border-t-red-600 animate-spin" />
+              <Languages className="absolute w-5 h-5 text-red-500 animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-white tracking-wide">
+                {trackTransition.type === 'audio' ? 'Cambiando Audio...' : 'Cambiando Subtítulo...'}
+              </p>
+              <p className="text-[11px] text-neutral-400">
+                Aplicando: {trackTransition.name}
+              </p>
             </div>
           </div>
         </div>

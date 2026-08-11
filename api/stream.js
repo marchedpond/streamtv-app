@@ -4,6 +4,27 @@
  * Rewrites HLS .m3u8 manifests to use /api_hlsr/ for TS segment proxying.
  */
 export default async function handler(req, res) {
+  // Polyfill Vercel helper methods if run under standard Node.js (Vite middleware)
+  if (typeof res.status !== 'function') {
+    res.status = function (statusCode) {
+      this.statusCode = statusCode;
+      return this;
+    };
+  }
+  if (typeof res.json !== 'function') {
+    res.json = function (obj) {
+      this.setHeader('Content-Type', 'application/json');
+      this.end(JSON.stringify(obj));
+      return this;
+    };
+  }
+  if (typeof res.send !== 'function') {
+    res.send = function (data) {
+      this.end(data);
+      return this;
+    };
+  }
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');

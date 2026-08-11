@@ -15,6 +15,10 @@
     {
       "source": "/api_raw_proxy",
       "destination": "/api/raw_proxy"
+    },
+    {
+      "source": "/api_subtitles",
+      "destination": "/api/subtitles"
     }
   ]
 }

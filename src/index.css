@@ -48,3 +48,24 @@
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* Custom styling for HTML5 video subtitles (WebVTT cues) */
+video::cue {
+  background: rgba(15, 15, 15, 0.85) !important;
+  color: #ffffff !important;
+  font-family: 'Outfit', sans-serif !important;
+  font-size: 25px !important;
+  font-weight: 500 !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9) !important;
+  padding: 4px 10px !important;
+}
+
+/* Push subtitles up when controls/menu are visible */
+video::-webkit-media-text-track-display {
+  transform: translateY(-60px) !important; /* Move higher up by default to clear any letterboxing */
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+video.subtitles-up::-webkit-media-text-track-display {
+  transform: translateY(-140px) !important; /* Move even higher up to clear the controls menu */
+}
