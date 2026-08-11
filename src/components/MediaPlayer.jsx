@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle } from 'lucide-react';
+import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X } from 'lucide-react';
 
 export default function MediaPlayer({
   itemData,
@@ -20,6 +20,8 @@ export default function MediaPlayer({
   const [showControls, setShowControls] = useState(true);
   const [isLoadingVideo, setIsLoadingVideo] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
+
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -62,6 +64,18 @@ export default function MediaPlayer({
     [itemData, title, subtitle, streamUrl, onProgressUpdate]
   );
 
+  // Manual Retry Handler
+  const handleManualRetry = () => {
+    setErrorMsg(null);
+    setIsLoadingVideo(true);
+    if (hlsRef.current) {
+      hlsRef.current.startLoad();
+    }
+    if (videoRef.current) {
+      videoRef.current.play().then(() => setIsLoadingVideo(false)).catch(() => {});
+    }
+  };
+
   // Initialize Video & Hls.js
   useEffect(() => {
     const video = videoRef.current;
@@ -69,6 +83,7 @@ export default function MediaPlayer({
 
     setErrorMsg(null);
     setIsLoadingVideo(true);
+    setRetryCount(0);
 
     const isHlsStream = streamUrl.includes('.m3u8') || streamUrl.includes('/live/');
 
@@ -77,6 +92,12 @@ export default function MediaPlayer({
         video.currentTime = initialTime;
       }
     };
+
+    // If stream URL is HTTP and running on HTTPS (Vercel), proxy via /api_raw_proxy
+    let effectiveStreamUrl = streamUrl;
+    if (window.location.protocol === 'https:' && streamUrl.startsWith('http:')) {
+      effectiveStreamUrl = `/api_raw_proxy?url=${encodeURIComponent(streamUrl)}`;
+    }
 
     if (isHlsStream && Hls.isSupported()) {
       if (hlsRef.current) {
@@ -87,10 +108,20 @@ export default function MediaPlayer({
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferHole: 0.5,
+        // Intercept all HTTP segment requests on HTTPS pages to prevent Mixed Content errors
+        xhrSetup: (xhr, url) => {
+          if (window.location.protocol === 'https:' && url.startsWith('http:')) {
+            const proxyUrl = `/api_raw_proxy?url=${encodeURIComponent(url)}`;
+            xhr.open('GET', proxyUrl, true);
+          }
+        },
       });
 
       hlsRef.current = hls;
-      hls.loadSource(streamUrl);
+      hls.loadSource(effectiveStreamUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -102,23 +133,28 @@ export default function MediaPlayer({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setErrorMsg('Error de red al conectar con la transmisión.');
-              hls.startLoad();
+              // Auto retry up to 3 times before displaying non-blocking error toast
+              if (retryCount < 3) {
+                setRetryCount((prev) => prev + 1);
+                hls.startLoad();
+              } else {
+                setErrorMsg('Conexión inestable con el servidor de la señal.');
+                setIsLoadingVideo(false);
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setErrorMsg('Error al decodificar el formato multimedia.');
               hls.recoverMediaError();
               break;
             default:
-              setErrorMsg('No se pudo reproducir la transmisión.');
+              setErrorMsg('Ocurrió una interrupción temporal en la señal.');
+              setIsLoadingVideo(false);
               hls.destroy();
               break;
           }
-          setIsLoadingVideo(false);
         }
       });
     } else {
-      video.src = streamUrl;
+      video.src = effectiveStreamUrl;
       video.addEventListener('loadedmetadata', seekToInitial, { once: true });
       video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
     }
@@ -269,7 +305,7 @@ export default function MediaPlayer({
         }}
         onError={() => {
           setIsLoadingVideo(false);
-          setErrorMsg('Ocurrió un error al conectar con la transmisión del video.');
+          setErrorMsg('Reconectando señal de transmisión...');
         }}
         className="w-full h-full object-contain"
         autoPlay
@@ -301,20 +337,28 @@ export default function MediaPlayer({
         </div>
       )}
 
-      {/* Error Overlay */}
+      {/* Non-Blocking Floating Error / Reconnect Toast Banner (Top Center) */}
       {errorMsg && (
-        <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center text-center p-6 space-y-4 z-50">
-          <div className="w-16 h-16 rounded-full bg-red-950/80 border border-red-800 flex items-center justify-center text-red-500 shadow-xl">
-            <AlertTriangle className="w-8 h-8" />
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-neutral-900/95 border border-red-800/80 rounded-2xl px-5 py-3 flex items-center gap-3 shadow-2xl shadow-black animate-fadeIn select-none max-w-md">
+          <AlertTriangle className="w-5 h-5 text-red-500 animate-pulse flex-shrink-0" />
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-xs font-bold text-white leading-tight">Interrupción Temporal</p>
+            <p className="text-[11px] text-neutral-400 truncate">{errorMsg}</p>
           </div>
-          <h3 className="text-xl font-bold text-white">Error de Transmisión</h3>
-          <p className="text-sm text-neutral-400 max-w-md">{errorMsg}</p>
           <button
-            data-dpad-id="player-error-back"
-            onClick={handleClose}
-            className="dpad-focusable px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition cursor-pointer"
+            data-dpad-id="player-toast-retry"
+            onClick={handleManualRetry}
+            className="dpad-focusable px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer flex-shrink-0"
           >
-            Volver
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reintentar</span>
+          </button>
+          <button
+            data-dpad-id="player-toast-dismiss"
+            onClick={() => setErrorMsg(null)}
+            className="dpad-focusable p-1 text-neutral-400 hover:text-white transition cursor-pointer flex-shrink-0"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}

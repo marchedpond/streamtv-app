@@ -11,6 +11,10 @@
     {
       "source": "/api_hlsr/(.*)",
       "destination": "/api/hlsr"
+    },
+    {
+      "source": "/api_raw_proxy",
+      "destination": "/api/raw_proxy"
     }
   ]
 }
