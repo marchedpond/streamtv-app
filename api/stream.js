@@ -1,7 +1,7 @@
 /**
  * Vercel Serverless Stream Proxy
  * Streams IPTV video content over HTTPS with Range request & CORS support.
- * Resolves Mixed Content (HTTPS -> HTTP) blocking and hides credentials completely.
+ * Rewrites HLS .m3u8 manifests to use /api_hlsr/ for TS segment proxying.
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -37,9 +37,18 @@ export default async function handler(req, res) {
       method: req.method,
     });
 
-    const isHls = file.endsWith('.m3u8') || file.endsWith('.ts');
-    const contentType = upstream.headers.get('content-type') || (isHls ? 'application/x-mpegURL' : 'video/mp4');
+    const isM3u8 = file.endsWith('.m3u8') || (upstream.headers.get('content-type') || '').includes('mpegurl');
 
+    if (isM3u8 && req.method === 'GET') {
+      let m3u8Text = await upstream.text();
+      // Rewrite relative /hlsr/ segment URLs inside .m3u8 to /api_hlsr/
+      m3u8Text = m3u8Text.replace(/\/hlsr\//g, '/api_hlsr/');
+
+      res.setHeader('Content-Type', 'application/x-mpegURL');
+      return res.status(200).send(m3u8Text);
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'video/mp4';
     res.setHeader('Content-Type', contentType);
 
     if (upstream.headers.get('content-length')) {

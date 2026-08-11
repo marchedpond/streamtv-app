@@ -7,6 +7,10 @@
     {
       "source": "/api_stream/(.*)",
       "destination": "/api/stream"
+    },
+    {
+      "source": "/api_hlsr/(.*)",
+      "destination": "/api/hlsr"
     }
   ]
 }

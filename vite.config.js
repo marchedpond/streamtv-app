@@ -33,11 +33,16 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
           rewrite: (path) => {
-            // Replaces /api_stream/movie/123.mp4 -> /movie/USER/PASS/123.mp4
             return path.replace(/^\/api_stream\/([^/]+)\/(.+)$/, (match, type, file) => {
               return `/${type}/${iptvUser}/${iptvPass}/${file}`;
             });
           },
+        },
+        '/api_hlsr': {
+          target: iptvServer,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api_hlsr/, '/hlsr'),
         },
       },
     },
