@@ -296,13 +296,12 @@ export default function MediaPlayer({
 
   const togglePlay = () => {
     if (!videoRef.current) return;
-    if (isPlaying) {
+    if (!videoRef.current.paused) {
       videoRef.current.pause();
       setIsPlaying(false);
       triggerSaveProgress(videoRef.current.currentTime, videoRef.current.duration);
     } else {
-      videoRef.current.play();
-      setIsPlaying(true);
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
 
@@ -429,7 +428,12 @@ export default function MediaPlayer({
         ref={videoRef}
         referrerPolicy="no-referrer"
         onTimeUpdate={handleTimeUpdate}
-        onPlaying={() => setIsLoadingVideo(false)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onPlaying={() => {
+          setIsPlaying(true);
+          setIsLoadingVideo(false);
+        }}
         onCanPlay={() => setIsLoadingVideo(false)}
         onLoadedData={() => setIsLoadingVideo(false)}
         onEnded={() => {
