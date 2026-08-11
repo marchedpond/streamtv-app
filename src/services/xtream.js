@@ -1,6 +1,6 @@
 /**
  * Service for interacting with Xtream Codes API
- * Implements batching & in-memory caching to prevent Nginx rate limiting / 404 bans.
+ * Uses /api_proxy for both local Vite dev server and Vercel serverless proxy
  */
 
 export const getCredentials = () => {
@@ -14,9 +14,10 @@ export const getCredentials = () => {
 
 const getApiEndpoint = () => {
   const { server, user, pass } = getCredentials();
-  const baseUrl = import.meta.env.DEV ? '/api_proxy' : server;
+  // Always use /api_proxy (handled by Vite proxy in dev and Vercel serverless proxy in prod)
+  const baseUrl = '/api_proxy';
   return {
-    url: `${baseUrl}/player_api.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`,
+    url: `${baseUrl}?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`,
     server,
     user,
     pass,
@@ -30,7 +31,7 @@ const streamCache = {
   series: null,
 };
 
-const fetchJson = async (action = '', extraParams = '', timeoutMs = 20000) => {
+const fetchJson = async (action = '', extraParams = '', timeoutMs = 25000) => {
   const { url } = getApiEndpoint();
   const fullUrl = action ? `${url}&action=${action}${extraParams}` : url;
 
@@ -97,14 +98,13 @@ export const getAllLiveStreams = async (categories = []) => {
   if (streamCache.live) return streamCache.live;
 
   try {
-    // Attempt direct fetch first
     const direct = await getLiveStreams();
     if (Array.isArray(direct) && direct.length > 0) {
       streamCache.live = direct;
       return direct;
     }
   } catch (err) {
-    // Fallback to batched category fetch if direct is blocked
+    // Fallback to batched category fetch
   }
 
   if (categories && categories.length > 0) {

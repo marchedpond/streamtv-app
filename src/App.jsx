@@ -190,15 +190,15 @@ export default function App() {
 
           {/* Main Layout (Sidebar + Content View) */}
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-            {/* Navigation Sidebar (Desktop) */}
+            {/* Navigation Sidebar (Desktop Only) */}
             <Sidebar
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               onRefresh={initAuth}
             />
 
-            {/* Main Content Area based on Active Tab */}
-            <main className="flex-1 h-full overflow-hidden flex flex-col">
+            {/* Main Content Area: overflow-y-auto allows vertical scrolling on mobile & touch */}
+            <main className="flex-1 h-full overflow-y-auto flex flex-col scrollbar-thin">
               {/* Continue Watching Section (Filtered by activeTab) */}
               <ContinueWatching
                 historyItems={historyItems}
@@ -218,7 +218,7 @@ export default function App() {
               />
 
               {/* Sections */}
-              <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex-1 flex flex-col">
                 {activeTab === 'live' && (
                   <LiveTVSection onPlayStream={handlePlayRequest} />
                 )}
@@ -239,7 +239,7 @@ export default function App() {
                 <button
                   data-dpad-id="resume-modal-close"
                   onClick={() => setPendingResumeStream(null)}
-                  className="dpad-focusable absolute top-4 right-4 p-2 rounded-full bg-neutral-900 text-neutral-400 hover:text-white transition"
+                  className="dpad-focusable absolute top-4 right-4 p-2 rounded-full bg-neutral-900 text-neutral-400 hover:text-white transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>

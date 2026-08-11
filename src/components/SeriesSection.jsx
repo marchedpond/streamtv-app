@@ -115,7 +115,7 @@ export default function SeriesSection({ onPlayStream }) {
   }, [seriesInfo, activeSeason]);
 
   return (
-    <div className="flex-1 h-full flex flex-col overflow-hidden bg-[#141414] p-4 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="flex-1 flex flex-col bg-[#141414] p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header Controls */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
