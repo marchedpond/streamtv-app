@@ -1,6 +1,22 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check } from 'lucide-react';
+
+const Rewind10Icon = ({ className = 'w-6 h-6' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 4a8 8 0 1 0 7.8 6" />
+    <polyline points="12 1 12 5 16 5" />
+    <text x="11.5" y="15" textAnchor="middle" fontSize="7.5" fontWeight="900" fill="currentColor" stroke="none" fontFamily="sans-serif">10</text>
+  </svg>
+);
+
+const Forward10Icon = ({ className = 'w-6 h-6' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 4a8 8 0 1 1 -7.8 6" />
+    <polyline points="12 1 12 5 8 5" />
+    <text x="12.5" y="15" textAnchor="middle" fontSize="7.5" fontWeight="900" fill="currentColor" stroke="none" fontFamily="sans-serif">10</text>
+  </svg>
+);
 
 export default function MediaPlayer({
   itemData,
@@ -17,6 +33,7 @@ export default function MediaPlayer({
 
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
   const [showControls, setShowControls] = useState(true);
   const [isLoadingVideo, setIsLoadingVideo] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -32,7 +49,7 @@ export default function MediaPlayer({
   const [subtitleTracks, setSubtitleTracks] = useState([]);
   const [selectedSubtitleTrack, setSelectedSubtitleTrack] = useState(-1);
   const [showAudioSubMenu, setShowAudioSubMenu] = useState(false);
-  const [activeMenuTab, setActiveMenuTab] = useState('audio'); // 'audio' or 'subtitles'
+  const [activeMenuTab, setActiveMenuTab] = useState('audio');
 
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -62,7 +79,7 @@ export default function MediaPlayer({
   const triggerSaveProgress = useCallback(
     (curr, dur) => {
       if (!onProgressUpdate) return;
-      if (curr < 2) return; // Skip saving first 2 seconds
+      if (curr < 2) return;
 
       onProgressUpdate({
         item_id: itemData?.id || itemData?.stream_id || title,
@@ -87,6 +104,16 @@ export default function MediaPlayer({
     }
     if (videoRef.current) {
       videoRef.current.play().then(() => setIsLoadingVideo(false)).catch(() => {});
+    }
+  };
+
+  // Volume Slider Handler
+  const handleVolumeChange = (newVol) => {
+    setVolume(newVol);
+    if (videoRef.current) {
+      videoRef.current.volume = newVol;
+      videoRef.current.muted = newVol === 0;
+      setIsMuted(newVol === 0);
     }
   };
 
@@ -328,8 +355,9 @@ export default function MediaPlayer({
 
   const toggleMute = () => {
     if (!videoRef.current) return;
-    videoRef.current.muted = !isMuted;
-    setIsMuted(!isMuted);
+    const newMuteState = !isMuted;
+    videoRef.current.muted = newMuteState;
+    setIsMuted(newMuteState);
   };
 
   const toggleFullscreen = () => {
@@ -365,7 +393,6 @@ export default function MediaPlayer({
     setDuration(dur || 0);
     setProgress(dur ? (curr / dur) * 100 : 0);
 
-    // Save progress throttled every 25 seconds to minimize Neon DB compute hours
     if (Math.abs(curr - lastSavedTimeRef.current) >= 25) {
       lastSavedTimeRef.current = curr;
       triggerSaveProgress(curr, dur);
@@ -402,13 +429,15 @@ export default function MediaPlayer({
         case 'ArrowUp':
           if (videoRef.current) {
             e.preventDefault();
-            videoRef.current.volume = Math.min(1, videoRef.current.volume + 0.1);
+            const newVol = Math.min(1, videoRef.current.volume + 0.1);
+            handleVolumeChange(newVol);
           }
           break;
         case 'ArrowDown':
           if (videoRef.current) {
             e.preventDefault();
-            videoRef.current.volume = Math.max(0, videoRef.current.volume - 0.1);
+            const newVol = Math.max(0, videoRef.current.volume - 0.1);
+            handleVolumeChange(newVol);
           }
           break;
         case 'Escape':
@@ -437,7 +466,7 @@ export default function MediaPlayer({
       onMouseMove={handleUserActivity}
       className="fixed inset-0 z-50 bg-black flex items-center justify-center overflow-hidden font-['Outfit'] select-none"
     >
-      {/* HTML5 Video Element with referrerPolicy="no-referrer" */}
+      {/* HTML5 Video Element */}
       <video
         ref={videoRef}
         referrerPolicy="no-referrer"
@@ -463,20 +492,20 @@ export default function MediaPlayer({
         playsInline
       />
 
-      {/* On-Screen Seek Ripple Animation Overlay */}
+      {/* On-Screen Seek Ripple Animation Overlay (Centered in Screen) */}
       {seekFeedback && (
-        <div className="absolute inset-0 pointer-events-none z-35 flex items-center justify-between px-8 sm:px-16 overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none z-35 flex items-center justify-around px-8 sm:px-24 overflow-hidden">
           {seekFeedback.type === 'rewind' ? (
-            <div key={seekFeedback.id} className="flex items-center gap-2.5 bg-neutral-950/85 border border-red-600/50 text-white font-bold px-6 py-4 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/80 animate-fadeIn scale-105 select-none">
-              <RotateCcw className="w-7 h-7 text-red-500 animate-spin" />
-              <span className="text-lg font-mono font-bold tracking-wider text-red-400">{seekFeedback.label}</span>
+            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/80 border border-red-600/60 text-white font-bold px-8 py-6 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
+              <Rewind10Icon className="w-12 h-12 text-red-500 animate-pulse" />
+              <span className="text-sm font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
             </div>
           ) : <div />}
 
           {seekFeedback.type === 'forward' ? (
-            <div key={seekFeedback.id} className="flex items-center gap-2.5 bg-neutral-950/85 border border-red-600/50 text-white font-bold px-6 py-4 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/80 animate-fadeIn scale-105 select-none">
-              <span className="text-lg font-mono font-bold tracking-wider text-red-400">{seekFeedback.label}</span>
-              <RotateCw className="w-7 h-7 text-red-500 animate-spin" />
+            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/80 border border-red-600/60 text-white font-bold px-8 py-6 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
+              <Forward10Icon className="w-12 h-12 text-red-500 animate-pulse" />
+              <span className="text-sm font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
             </div>
           ) : <div />}
         </div>
@@ -705,65 +734,87 @@ export default function MediaPlayer({
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          {/* Action Buttons: Left (Volume), Center (Play/Rewind/Forward), Right (Audio & Subtitles, Fullscreen) */}
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: Volume Control with Level Indicator & Slider */}
+            <div className="flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-2 rounded-2xl">
               <button
-                data-dpad-id="player-btn-play"
-                onClick={togglePlay}
-                className="dpad-focusable p-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white transition-all cursor-pointer shadow-lg shadow-red-950/60"
+                data-dpad-id="player-btn-mute"
+                onClick={toggleMute}
+                className="dpad-focusable p-1.5 rounded-lg text-neutral-300 hover:text-white transition cursor-pointer"
+                title="Silenciar / Activar Sonido"
               >
-                {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 fill-current" />}
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="w-5 h-5 text-red-500" />
+                ) : (
+                  <Volume2 className="w-5 h-5" />
+                )}
               </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                className="w-16 sm:w-20 accent-red-600 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+              />
+              <span className="text-[11px] font-mono font-bold text-neutral-400 min-w-[32px] text-right">
+                {Math.round((isMuted ? 0 : volume) * 100)}%
+              </span>
+            </div>
 
+            {/* Center: Main Playback Controls (Rewind 10, Play/Pause, Forward 10) */}
+            <div className="flex items-center gap-4">
               <button
                 data-dpad-id="player-btn-rewind"
                 onClick={() => seek(-10)}
-                className="dpad-focusable px-3 py-2.5 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800 flex items-center gap-1.5"
+                className="dpad-focusable p-3 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
                 title="Retroceder 10 segundos"
               >
-                <RotateCcw className="w-5 h-5" />
-                <span className="text-[11px] font-bold font-mono text-neutral-300">-10s</span>
+                <Rewind10Icon className="w-6 h-6 text-neutral-300" />
+              </button>
+
+              <button
+                data-dpad-id="player-btn-play"
+                onClick={togglePlay}
+                className="dpad-focusable p-4 sm:p-5 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all cursor-pointer shadow-xl shadow-red-950/80 hover:scale-105"
+                title={isPlaying ? 'Pausar' : 'Reproducir'}
+              >
+                {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 fill-current ml-0.5" />}
               </button>
 
               <button
                 data-dpad-id="player-btn-forward"
                 onClick={() => seek(10)}
-                className="dpad-focusable px-3 py-2.5 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800 flex items-center gap-1.5"
+                className="dpad-focusable p-3 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
                 title="Adelantar 10 segundos"
               >
-                <RotateCw className="w-5 h-5" />
-                <span className="text-[11px] font-bold font-mono text-neutral-300">+10s</span>
-              </button>
-
-              <button
-                data-dpad-id="player-btn-mute"
-                onClick={toggleMute}
-                className="dpad-focusable p-3 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800"
-              >
-                {isMuted ? <VolumeX className="w-5 h-5 text-red-500" /> : <Volume2 className="w-5 h-5" />}
-              </button>
-
-              {/* Audio & Subtitles Selector Button */}
-              <button
-                data-dpad-id="player-btn-audiosub"
-                onClick={() => setShowAudioSubMenu(true)}
-                className={`dpad-focusable p-3 rounded-xl transition-all cursor-pointer border ${
-                  showAudioSubMenu || hasMultipleTracks
-                    ? 'bg-red-950/90 border-red-600 text-white shadow-lg shadow-red-950/50'
-                    : 'bg-neutral-900/80 border-neutral-800 text-neutral-300 hover:bg-neutral-800'
-                }`}
-                title="Idiomas de Audio y Subtítulos"
-              >
-                <Languages className="w-5 h-5" />
+                <Forward10Icon className="w-6 h-6 text-neutral-300" />
               </button>
             </div>
 
+            {/* Right: Audio & Subtitles Button with Label + Fullscreen */}
             <div className="flex items-center gap-3">
+              <button
+                data-dpad-id="player-btn-audiosub"
+                onClick={() => setShowAudioSubMenu(true)}
+                className={`dpad-focusable px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer border flex items-center gap-2 text-xs font-bold ${
+                  showAudioSubMenu || hasMultipleTracks
+                    ? 'bg-red-950/90 border-red-600 text-white shadow-lg shadow-red-950/50'
+                    : 'bg-neutral-900/90 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'
+                }`}
+                title="Idiomas de Audio y Subtítulos"
+              >
+                <Languages className="w-4 h-4 text-red-500" />
+                <span className="hidden sm:inline">Audio y Subtítulos</span>
+              </button>
+
               <button
                 data-dpad-id="player-btn-fullscreen"
                 onClick={toggleFullscreen}
-                className="dpad-focusable p-3 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800"
+                className="dpad-focusable p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 transition-all cursor-pointer border border-neutral-800"
+                title="Pantalla Completa"
               >
                 <Maximize className="w-5 h-5" />
               </button>
