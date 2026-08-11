@@ -41,10 +41,10 @@ Una aplicación web Single Page Application (SPA) ultra-optimizada para actuar c
 Configura el archivo `.env` en la raíz del proyecto basándote en `.env.example`:
 
 ```env
-VITE_IPTV_SERVER=http://reydereyes.xyz:8080
-VITE_IPTV_USER=JosueMejia
-VITE_IPTV_PASS=PPw3tAhK4P
-DATABASE_URL=postgres://user:password@ep-example-123456.us-east-2.aws.neon.tech/neondb?sslmode=require
+VITE_IPTV_SERVER=http://your-iptv-server.com:8080
+VITE_IPTV_USER=your_username
+VITE_IPTV_PASS=your_password
+DATABASE_URL=postgres://user:password@your-neon-host.aws.neon.tech/neondb?sslmode=require
 ```
 
 ---
@@ -61,7 +61,7 @@ En el panel de Vercel (**Project Settings -> Environment Variables**), agrega:
 
 | Variable | Descripción |
 | :--- | :--- |
-| `VITE_IPTV_SERVER` | URL Servidor IPTV (ej. `http://reydereyes.xyz:8080`) |
+| `VITE_IPTV_SERVER` | URL Servidor IPTV (ej. `http://your-iptv-server.com:8080`) |
 | `VITE_IPTV_USER` | Usuario IPTV |
 | `VITE_IPTV_PASS` | Contraseña IPTV |
 | `DATABASE_URL` | String de Conexión de Neon PostgreSQL |
