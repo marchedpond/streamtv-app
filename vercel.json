@@ -9,7 +9,7 @@
       "destination": "/api/stream"
     },
     {
-      "source": "/api_hlsr/(.*)",
+      "source": "/api_hlsr",
       "destination": "/api/hlsr"
     },
     {
@@ -19,6 +19,10 @@
     {
       "source": "/api_subtitles",
       "destination": "/api/subtitles"
+    },
+    {
+      "source": "/api/history",
+      "destination": "/api/history"
     }
   ]
 }

@@ -1,28 +1,47 @@
 /**
- * Vercel Serverless Function for HLS TS Video Segments (/hlsr/*)
- * Injects credentials and proxies HLS TS video segments over HTTPS without 401 Unauthorized errors.
+ * Vercel Serverless Function for HLS TS Video Segments (/api_hlsr)
+ * Proxies HLS TS video segments over HTTPS directly from the target direct streaming server.
  */
 export default async function handler(req, res) {
+  // Polyfill Vercel helper methods if run under standard Node.js (Vite middleware)
+  if (typeof res.status !== 'function') {
+    res.status = function (statusCode) {
+      this.statusCode = statusCode;
+      return this;
+    };
+  }
+  if (typeof res.json !== 'function') {
+    res.json = function (obj) {
+      this.setHeader('Content-Type', 'application/json');
+      this.end(JSON.stringify(obj));
+      return this;
+    };
+  }
+  if (typeof res.send !== 'function') {
+    res.send = function (data) {
+      this.end(data);
+      return this;
+    };
+  }
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  const server = (process.env.VITE_IPTV_SERVER || 'http://reydereyes.xyz:8080').replace(/\/+$/, '');
-  const user = process.env.VITE_IPTV_USER || 'JosueMejia';
-  const pass = process.env.VITE_IPTV_PASS || 'PPw3tAhK4P';
-
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const segmentPath = urlObj.pathname.replace(/^\/api_hlsr\/?/, '');
+  const host = urlObj.searchParams.get('host');
+  const file = urlObj.searchParams.get('file');
 
-  // Preserve query string or append username and password for authentication
-  const hasQuery = segmentPath.includes('?');
-  const authQuery = `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
-  const fullSegmentQuery = hasQuery ? `${segmentPath}&${authQuery}` : `${segmentPath}?${authQuery}`;
+  if (!host || !file) {
+    res.statusCode = 400;
+    return res.end('Missing host or file parameter');
+  }
 
-  const targetUrl = `${server}/hlsr/${fullSegmentQuery}`;
+  const targetUrl = `${host}/hlsr/${file}`;
 
   try {
     const upstream = await fetch(targetUrl, { method: req.method });
@@ -47,6 +66,7 @@ export default async function handler(req, res) {
     return res.end();
   } catch (error) {
     console.error('Vercel HLSR Segment Proxy Error:', error);
-    return res.status(500).end();
+    res.statusCode = 500;
+    return res.end();
   }
 }

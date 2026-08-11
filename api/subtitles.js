@@ -144,10 +144,15 @@ export default async function handler(req, res) {
           const start = formatVttTime(subtitle.time);
           const end = formatVttTime(subtitle.time + subtitle.duration);
           let text = subtitle.text.trim();
-          // Remove Matroska/ASS style tags like {\pos(x,y)} or {\i1}
+          // Remove Matroska/ASS style tags like {\pos(x,y)} or {\i1} or <i></i>
           text = text.replace(/\{[^}]+\}/g, '');
-          // Replace Matroska ASS newline \N or \n with a real VTT newline
-          text = text.replace(/\\N/gi, '\n');
+          text = text.replace(/<[^>]+>/g, '');
+          // Replace CRLF and lone CR with standard LF newlines for WebVTT
+          text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          // Handle ASS override newlines: literal two-char sequences backslash+N or backslash+n
+          // These appear in ASS/SSA subtitles stored inside MKV containers
+          text = text.replace(/\\[Nn]/g, '\n');
+          // If the text ends up being multi-line, keep all lines (browser renders each on its own line)
           res.write(`${start} --> ${end}\n${text}\n\n`);
         }
       });

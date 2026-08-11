@@ -2,6 +2,8 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import subtitlesHandler from './api/subtitles.js';
 import streamHandler from './api/stream.js';
+import historyHandler from './api/history.js';
+import hlsrHandler from './api/hlsr.js';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -13,6 +15,7 @@ export default defineConfig(({ mode }) => {
   process.env.VITE_IPTV_SERVER = iptvServer;
   process.env.VITE_IPTV_USER = iptvUser;
   process.env.VITE_IPTV_PASS = iptvPass;
+  process.env.DATABASE_URL = env.DATABASE_URL || '';
 
   if (!iptvServer || !iptvUser || !iptvPass) {
     console.warn(
@@ -41,9 +44,37 @@ export default defineConfig(({ mode }) => {
               try {
                 await streamHandler(req, res);
               } catch (err) {
-                console.error('Local Stream Proxy Middleware Error:', err);
+                const isDisconnect = err?.message?.includes('terminated') || err?.message?.includes('aborted');
+                if (!isDisconnect) console.error('Local Stream Proxy Middleware Error:', err);
+                if (!res.headersSent) {
+                  res.statusCode = 500;
+                  try { res.end(JSON.stringify({ error: err.message })); } catch (_) {}
+                }
+              }
+              return;
+            }
+
+            if (req.url.startsWith('/api/history') || req.url.startsWith('/api_history')) {
+              try {
+                await historyHandler(req, res);
+              } catch (err) {
+                console.error('Local History Middleware Error:', err);
                 res.statusCode = 500;
                 res.end(JSON.stringify({ error: err.message }));
+              }
+              return;
+            }
+
+            if (req.url.startsWith('/api_hlsr')) {
+              try {
+                await hlsrHandler(req, res);
+              } catch (err) {
+                const isDisconnect = err?.message?.includes('terminated') || err?.message?.includes('aborted');
+                if (!isDisconnect) console.error('Local HLSR Segment Proxy Middleware Error:', err);
+                if (!res.headersSent) {
+                  res.statusCode = 500;
+                  try { res.end(JSON.stringify({ error: err.message })); } catch (_) {}
+                }
               }
               return;
             }
@@ -82,43 +113,7 @@ export default defineConfig(({ mode }) => {
             return `/player_api.php?${authParams}`;
           },
         },
-        '/api_stream': {
-          target: iptvServer,
-          changeOrigin: true,
-          secure: false,
-          configure: (proxy) => {
-            proxy.on('proxyRes', (proxyRes, req, res) => {
-              res.setHeader('Access-Control-Allow-Origin', '*');
-              res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-              res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
-            });
-          },
-          rewrite: (path) => {
-            return path.replace(/^\/api_stream\/([^/]+)\/(.+)$/, (match, type, file) => {
-              return `/${type}/${iptvUser}/${iptvPass}/${file}`;
-            });
-          },
-        },
-        '/api_hlsr': {
-          target: iptvServer,
-          changeOrigin: true,
-          secure: false,
-          configure: (proxy) => {
-            proxy.on('proxyRes', (proxyRes, req, res) => {
-              res.setHeader('Access-Control-Allow-Origin', '*');
-              res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-              res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
-            });
-          },
-          rewrite: (path) => {
-            const cleanPath = path.replace(/^\/api_hlsr\/?/, '');
-            const authParams = `username=${encodeURIComponent(iptvUser)}&password=${encodeURIComponent(iptvPass)}`;
-            const hasQuery = cleanPath.includes('?');
-            return hasQuery
-              ? `/hlsr/${cleanPath}&${authParams}`
-              : `/hlsr/${cleanPath}?${authParams}`;
-          },
-        },
+        // Note: /api_stream and /api_hlsr are handled by the custom plugin middleware above
       },
     },
   };

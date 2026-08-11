@@ -25,6 +25,8 @@ export default async function handler(req, res) {
     };
   }
 
+  let headersSent = false;
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
@@ -62,8 +64,14 @@ export default async function handler(req, res) {
 
     if (isM3u8 && req.method === 'GET') {
       let m3u8Text = await upstream.text();
-      // Rewrite relative /hlsr/ segment URLs inside .m3u8 to /api_hlsr/
-      m3u8Text = m3u8Text.replace(/\/hlsr\//g, '/api_hlsr/');
+
+      // Get the redirected final origin from the upstream response URL
+      const finalUrl = new URL(upstream.url);
+      const redirectOrigin = finalUrl.origin; // e.g. "http://121.91.224.166:8080"
+
+      // Rewrite relative /hlsr/ segment URLs to include the redirectOrigin host as a query parameter
+      const encodedOrigin = encodeURIComponent(redirectOrigin);
+      m3u8Text = m3u8Text.replace(/\/hlsr\//g, `/api_hlsr?host=${encodedOrigin}&file=`);
 
       res.setHeader('Content-Type', 'application/x-mpegURL');
       return res.status(200).send(m3u8Text);
@@ -83,6 +91,7 @@ export default async function handler(req, res) {
     }
 
     res.status(upstream.status);
+    headersSent = true;
 
     if (req.method === 'HEAD') {
       return res.end();
@@ -96,7 +105,18 @@ export default async function handler(req, res) {
     }
     return res.end();
   } catch (error) {
-    console.error('Vercel Stream Proxy Error:', error);
-    return res.status(500).json({ error: 'Error al canalizar la transmisión del video' });
+    // If the client disconnected mid-stream, this is expected — don't log as error
+    const isClientDisconnect = error?.cause?.code === 'UND_ERR_SOCKET' ||
+      error?.message?.includes('terminated') ||
+      error?.message?.includes('aborted');
+    if (!isClientDisconnect) {
+      console.error('Vercel Stream Proxy Error:', error);
+    }
+    // Only send error response if we haven't started streaming yet
+    if (!headersSent) {
+      try {
+        return res.status(500).json({ error: 'Error al canalizar la transmisión del video' });
+      } catch (_) { /* ignore */ }
+    }
   }
 }

@@ -5,6 +5,44 @@ import { neon } from '@neondatabase/serverless';
  * Stores VOD Movies and Series episodes left in-progress ("a medias").
  */
 export default async function handler(req, res) {
+  // Polyfill Vercel helper methods if run under standard Node.js (Vite middleware)
+  if (typeof res.status !== 'function') {
+    res.status = function (statusCode) {
+      this.statusCode = statusCode;
+      return this;
+    };
+  }
+  if (typeof res.json !== 'function') {
+    res.json = function (obj) {
+      this.setHeader('Content-Type', 'application/json');
+      this.end(JSON.stringify(obj));
+      return this;
+    };
+  }
+  if (typeof res.send !== 'function') {
+    res.send = function (data) {
+      this.end(data);
+      return this;
+    };
+  }
+
+  // Parse JSON request body if run under standard Node.js (Vite middleware)
+  if (req.method === 'POST' && !req.body) {
+    req.body = await new Promise((resolve) => {
+      let bodyData = '';
+      req.on('data', (chunk) => {
+        bodyData += chunk;
+      });
+      req.on('end', () => {
+        try {
+          resolve(JSON.parse(bodyData));
+        } catch (e) {
+          resolve({});
+        }
+      });
+    });
+  }
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

@@ -334,8 +334,10 @@ export default function MediaPlayer({
             subTracks[idx].mode = 'showing';
           }
         }
+      } else if (trackId === -1) {
+        hlsRef.current.subtitleTrack = -1;
       } else {
-        // Switch using Hls.js
+        // Switch using Hls.js subtitle track
         hlsRef.current.subtitleTrack = typeof trackId === 'number' ? trackId : parseInt(trackId, 10);
       }
     } else if (video && video.textTracks) {
@@ -372,8 +374,52 @@ export default function MediaPlayer({
       video.textTracks.addEventListener('addtrack', syncTracks);
       video.textTracks.addEventListener('removetrack', syncTracks);
       video.textTracks.addEventListener('change', syncTracks);
+
+      // Sanitize cue text for all text tracks to fix \N ASS override codes
+      const sanitizeCues = (track) => {
+        if (!track.cues) return;
+        Array.from(track.cues).forEach((cue) => {
+          if (cue.text && /\\[Nn]/.test(cue.text)) {
+            cue.text = cue.text.replace(/\\[Nn]/g, '\n');
+          }
+        });
+      };
+
+      const handleAddTrack = (e) => {
+        const track = e.track;
+        // Sanitize existing cues when track loads
+        track.addEventListener('cuechange', () => sanitizeCues(track));
+        // Also sanitize when all cues load
+        if (track.cues && track.cues.length > 0) sanitizeCues(track);
+      };
+
+      video.textTracks.addEventListener('addtrack', handleAddTrack);
     }
   };
+
+  // Persist subtitle selection — reapply track mode whenever selectedSubtitleTrack changes
+  // This prevents HLS.js internal resets from clearing user selection
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !video.textTracks) return;
+    if (selectedSubtitleTrack === -1 || subtitleTracks.length === 0) return;
+
+    const trackInfo = typeof selectedSubtitleTrack === 'string' && selectedSubtitleTrack.startsWith('native-')
+      ? subtitleTracks.find(t => t.id === selectedSubtitleTrack)
+      : null;
+
+    if (trackInfo) {
+      Array.from(video.textTracks).forEach((t) => {
+        if (
+          (t.kind === 'subtitles' || t.kind === 'captions') &&
+          t.label === trackInfo.name &&
+          (t.language === trackInfo.lang || !trackInfo.lang)
+        ) {
+          if (t.mode !== 'showing') t.mode = 'showing';
+        }
+      });
+    }
+  }, [selectedSubtitleTrack, subtitleTracks]);
 
   // MediaSession API Integration for Background & Lock Screen Playback
   useEffect(() => {
@@ -550,6 +596,19 @@ export default function MediaPlayer({
 
       hlsInstance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
         syncTracks();
+      });
+
+      // Sanitize \N ASS override codes in HLS.js delivered subtitle cues
+      hlsInstance.on(Hls.Events.SUBTITLE_FRAG_PROCESSED, () => {
+        if (!video.textTracks) return;
+        Array.from(video.textTracks).forEach((track) => {
+          if (!track.cues) return;
+          Array.from(track.cues).forEach((cue) => {
+            if (cue.text && /\\[Nn]/.test(cue.text)) {
+              cue.text = cue.text.replace(/\\[Nn]/g, '\n');
+            }
+          });
+        });
       });
 
       hlsInstance.on(Hls.Events.LEVEL_LOADED, () => {
@@ -854,13 +913,20 @@ export default function MediaPlayer({
         autoPlay
         playsInline
       >
-        {proxySubtitleTracks.map((track) => (
+        {proxySubtitleTracks.map((track, trackIdx) => (
           <track
             key={track.id}
             kind="subtitles"
             src={`/api_subtitles?id=${itemData.id}&type=${itemData.type}&action=vtt&track=${track.id}&ext=${itemData.container_extension || 'mkv'}`}
             srcLang={track.lang}
             label={track.name}
+            onLoad={(e) => {
+              // When the VTT loads, re-apply showing mode if this track is selected
+              const nativeId = `native-${trackIdx}`;
+              if (selectedSubtitleTrack === nativeId && e.target.track) {
+                e.target.track.mode = 'showing';
+              }
+            }}
           />
         ))}
       </video>
