@@ -1,6 +1,6 @@
 /**
  * Vercel Serverless Function for HLS TS Video Segments (/hlsr/*)
- * Proxies HLS TS video segments over HTTPS to eliminate Mixed Content blocking.
+ * Injects credentials and proxies HLS TS video segments over HTTPS without 401 Unauthorized errors.
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -11,10 +11,18 @@ export default async function handler(req, res) {
   }
 
   const server = (process.env.VITE_IPTV_SERVER || 'http://reydereyes.xyz:8080').replace(/\/+$/, '');
+  const user = process.env.VITE_IPTV_USER || 'JosueMejia';
+  const pass = process.env.VITE_IPTV_PASS || 'PPw3tAhK4P';
+
   const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const segmentPath = urlObj.pathname.replace(/^\/api_hlsr\/?/, '');
 
-  const targetUrl = `${server}/hlsr/${segmentPath}`;
+  // Preserve query string or append username and password for authentication
+  const hasQuery = segmentPath.includes('?');
+  const authQuery = `username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+  const fullSegmentQuery = hasQuery ? `${segmentPath}&${authQuery}` : `${segmentPath}?${authQuery}`;
+
+  const targetUrl = `${server}/hlsr/${fullSegmentQuery}`;
 
   try {
     const upstream = await fetch(targetUrl, { method: req.method });

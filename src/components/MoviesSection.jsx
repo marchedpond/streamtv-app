@@ -247,7 +247,7 @@ export default function MoviesSection({ onPlayStream }) {
       {/* Movie Details Modal Overlay */}
       {selectedMovie && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 select-none animate-fadeIn">
-          <div className="glass-panel border border-neutral-700/80 w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl relative flex flex-col md:flex-row">
+          <div className="glass-panel border border-neutral-700/80 w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl relative flex flex-col md:flex-row">
             <button
               data-dpad-id="vod-modal-close"
               onClick={() => setSelectedMovie(null)}
@@ -256,7 +256,7 @@ export default function MoviesSection({ onPlayStream }) {
               <X className="w-5 h-5" />
             </button>
 
-            <div className="w-full md:w-64 aspect-[2/3] bg-neutral-950 relative flex-shrink-0">
+            <div className="w-full h-44 sm:h-56 md:h-auto md:w-64 bg-neutral-950 relative flex-shrink-0">
               {selectedMovie.stream_icon ? (
                 <img
                   src={getOptimizedImageUrl(selectedMovie.stream_icon, 400)}

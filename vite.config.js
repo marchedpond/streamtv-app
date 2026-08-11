@@ -42,7 +42,14 @@ export default defineConfig(({ mode }) => {
           target: iptvServer,
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path.replace(/^\/api_hlsr/, '/hlsr'),
+          rewrite: (path) => {
+            const cleanPath = path.replace(/^\/api_hlsr\/?/, '');
+            const authParams = `username=${encodeURIComponent(iptvUser)}&password=${encodeURIComponent(iptvPass)}`;
+            const hasQuery = cleanPath.includes('?');
+            return hasQuery
+              ? `/hlsr/${cleanPath}&${authParams}`
+              : `/hlsr/${cleanPath}?${authParams}`;
+          },
         },
       },
     },

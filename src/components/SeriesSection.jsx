@@ -294,15 +294,15 @@ export default function SeriesSection({ onPlayStream }) {
                 <p className="text-sm font-medium text-neutral-400">Cargando episodios de la serie...</p>
               </div>
             ) : (
-              <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-                <div className="w-full md:w-56 glass-panel border-r border-neutral-800 p-4 space-y-2 overflow-y-auto">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-2">Temporadas</p>
+              <div className="flex-1 overflow-y-auto flex flex-col md:flex-row">
+                <div className="w-full md:w-56 glass-panel border-b md:border-b-0 md:border-r border-neutral-800 p-3 sm:p-4 flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-y-auto flex-shrink-0">
+                  <p className="hidden md:block text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1">Temporadas</p>
                   {seriesInfo?.episodes && Object.keys(seriesInfo.episodes).map((seasonKey) => (
                     <button
                       key={seasonKey}
                       data-dpad-id={`series-season-${seasonKey}`}
                       onClick={() => setActiveSeason(seasonKey)}
-                      className={`dpad-focusable w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      className={`dpad-focusable px-4 py-2 sm:py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap md:w-full text-left transition-all cursor-pointer ${
                         activeSeason.toString() === seasonKey.toString()
                           ? 'bg-red-600 text-white shadow-md'
                           : 'bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white'
