@@ -18,6 +18,7 @@ export default function MediaPlayer({
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -67,6 +68,8 @@ export default function MediaPlayer({
     if (!video || !streamUrl) return;
 
     setErrorMsg(null);
+    setIsLoadingVideo(true);
+
     const isHlsStream = streamUrl.includes('.m3u8') || streamUrl.includes('/live/');
 
     const seekToInitial = () => {
@@ -92,7 +95,7 @@ export default function MediaPlayer({
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         seekToInitial();
-        video.play().catch(() => setIsPlaying(false));
+        video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
@@ -111,16 +114,13 @@ export default function MediaPlayer({
               hls.destroy();
               break;
           }
+          setIsLoadingVideo(false);
         }
       });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = streamUrl;
-      video.addEventListener('loadedmetadata', seekToInitial, { once: true });
-      video.play().catch(() => setIsPlaying(false));
     } else {
       video.src = streamUrl;
       video.addEventListener('loadedmetadata', seekToInitial, { once: true });
-      video.play().catch(() => setIsPlaying(false));
+      video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
     }
 
     return () => {
@@ -180,6 +180,11 @@ export default function MediaPlayer({
     if (!videoRef.current) return;
     const curr = videoRef.current.currentTime;
     const dur = videoRef.current.duration;
+
+    if (curr > 0 && isLoadingVideo) {
+      setIsLoadingVideo(false);
+    }
+
     setCurrentTime(curr);
     setDuration(dur || 0);
     setProgress(dur ? (curr / dur) * 100 : 0);
@@ -255,15 +260,46 @@ export default function MediaPlayer({
         ref={videoRef}
         referrerPolicy="no-referrer"
         onTimeUpdate={handleTimeUpdate}
+        onPlaying={() => setIsLoadingVideo(false)}
+        onCanPlay={() => setIsLoadingVideo(false)}
+        onLoadedData={() => setIsLoadingVideo(false)}
         onEnded={() => {
           setIsPlaying(false);
           if (videoRef.current) triggerSaveProgress(videoRef.current.currentTime, videoRef.current.duration);
         }}
-        onError={() => setErrorMsg('Ocurrió un error al conectar con la transmisión del video.')}
+        onError={() => {
+          setIsLoadingVideo(false);
+          setErrorMsg('Ocurrió un error al conectar con la transmisión del video.');
+        }}
         className="w-full h-full object-contain"
         autoPlay
         playsInline
       />
+
+      {/* Video Loading Animation Overlay */}
+      {isLoadingVideo && !errorMsg && (
+        <div className="absolute inset-0 bg-neutral-950 flex flex-col items-center justify-center space-y-6 z-40 transition-opacity duration-500">
+          <div className="relative flex items-center justify-center">
+            {/* Animated Pulsing Ring */}
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-red-600/20 border-t-red-600 animate-spin" />
+
+            {/* Center Brand Icon */}
+            <div className="absolute w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-neutral-900 border border-neutral-800 overflow-hidden flex items-center justify-center shadow-2xl shadow-red-950/80">
+              <img src="/favicon.png" alt="StreamTV Logo" className="w-full h-full object-cover animate-pulse" />
+            </div>
+          </div>
+
+          <div className="text-center space-y-1.5 max-w-sm px-4">
+            <h3 className="text-base sm:text-lg font-bold text-white tracking-wide truncate">
+              {title || 'Cargando Transmisión...'}
+            </h3>
+            {subtitle && <p className="text-xs text-red-400 font-medium truncate">{subtitle}</p>}
+            <p className="text-[11px] text-neutral-400 animate-pulse pt-1">
+              Preparando transmisión HD y buffering...
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Error Overlay */}
       {errorMsg && (
