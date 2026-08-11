@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, MessageSquare, Check } from 'lucide-react';
+import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check } from 'lucide-react';
 
 export default function MediaPlayer({
   itemData,
@@ -91,6 +91,10 @@ export default function MediaPlayer({
     setSelectedAudioTrack(trackId);
     if (hlsRef.current) {
       hlsRef.current.audioTrack = trackId;
+    } else if (videoRef.current && videoRef.current.audioTracks) {
+      Array.from(videoRef.current.audioTracks).forEach((t, idx) => {
+        t.enabled = idx === trackId;
+      });
     }
   };
 
@@ -103,6 +107,53 @@ export default function MediaPlayer({
       Array.from(videoRef.current.textTracks).forEach((t, idx) => {
         t.mode = idx === trackId ? 'showing' : 'disabled';
       });
+    }
+  };
+
+  // Sync Native Video Audio & Subtitle Tracks
+  const setupNativeTrackListeners = (video) => {
+    if (!video) return;
+
+    if (video.audioTracks) {
+      const updateAudioTracks = () => {
+        const tracks = Array.from(video.audioTracks).map((t, idx) => ({
+          id: idx,
+          name: t.label || (t.language ? `Audio (${t.language.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
+          lang: t.language || '',
+          enabled: t.enabled,
+        }));
+        if (tracks.length > 0) {
+          setAudioTracks(tracks);
+          const activeIdx = tracks.findIndex((t) => t.enabled);
+          setSelectedAudioTrack(activeIdx >= 0 ? activeIdx : 0);
+        }
+      };
+
+      video.audioTracks.addEventListener('addtrack', updateAudioTracks);
+      video.audioTracks.addEventListener('removetrack', updateAudioTracks);
+      video.audioTracks.addEventListener('change', updateAudioTracks);
+      updateAudioTracks();
+    }
+
+    if (video.textTracks) {
+      const updateTextTracks = () => {
+        const tracks = Array.from(video.textTracks)
+          .filter((t) => t.kind === 'subtitles' || t.kind === 'captions')
+          .map((t, idx) => ({
+            id: idx,
+            name: t.label || (t.language ? `Subtítulo (${t.language.toUpperCase()})` : `Subtítulo ${idx + 1}`),
+            lang: t.language || '',
+            mode: t.mode,
+          }));
+        setSubtitleTracks(tracks);
+        const activeIdx = tracks.findIndex((t) => t.mode === 'showing');
+        setSelectedSubtitleTrack(activeIdx);
+      };
+
+      video.textTracks.addEventListener('addtrack', updateTextTracks);
+      video.textTracks.addEventListener('removetrack', updateTextTracks);
+      video.textTracks.addEventListener('change', updateTextTracks);
+      updateTextTracks();
     }
   };
 
@@ -131,6 +182,8 @@ export default function MediaPlayer({
     if (window.location.protocol === 'https:' && streamUrl.startsWith('http:')) {
       effectiveStreamUrl = `/api_raw_proxy?url=${encodeURIComponent(streamUrl)}`;
     }
+
+    setupNativeTrackListeners(video);
 
     if (isHlsStream && Hls.isSupported()) {
       if (hlsRef.current) {
@@ -161,25 +214,45 @@ export default function MediaPlayer({
         video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
 
         if (hls.audioTracks && hls.audioTracks.length > 0) {
-          setAudioTracks(hls.audioTracks);
-          setSelectedAudioTrack(hls.audioTrack);
+          const formattedAudio = hls.audioTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || (t.lang ? `Audio (${t.lang.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
+            lang: t.lang || '',
+          }));
+          setAudioTracks(formattedAudio);
+          setSelectedAudioTrack(hls.audioTrack >= 0 ? hls.audioTrack : 0);
         }
         if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
-          setSubtitleTracks(hls.subtitleTracks);
+          const formattedSub = hls.subtitleTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || (t.lang ? `Subtítulo (${t.lang.toUpperCase()})` : `Subtítulo ${idx + 1}`),
+            lang: t.lang || '',
+          }));
+          setSubtitleTracks(formattedSub);
           setSelectedSubtitleTrack(hls.subtitleTrack);
         }
       });
 
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
         if (data && data.audioTracks && data.audioTracks.length > 0) {
-          setAudioTracks(data.audioTracks);
-          setSelectedAudioTrack(hls.audioTrack);
+          const formattedAudio = data.audioTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || (t.lang ? `Audio (${t.lang.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
+            lang: t.lang || '',
+          }));
+          setAudioTracks(formattedAudio);
+          setSelectedAudioTrack(hls.audioTrack >= 0 ? hls.audioTrack : 0);
         }
       });
 
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
         if (data && data.subtitleTracks && data.subtitleTracks.length > 0) {
-          setSubtitleTracks(data.subtitleTracks);
+          const formattedSub = data.subtitleTracks.map((t, idx) => ({
+            id: idx,
+            name: t.name || (t.lang ? `Subtítulo (${t.lang.toUpperCase()})` : `Subtítulo ${idx + 1}`),
+            lang: t.lang || '',
+          }));
+          setSubtitleTracks(formattedSub);
           setSelectedSubtitleTrack(hls.subtitleTrack);
         }
       });
@@ -209,17 +282,7 @@ export default function MediaPlayer({
       });
     } else {
       video.src = effectiveStreamUrl;
-      video.addEventListener('loadedmetadata', () => {
-        seekToInitial();
-        if (video.textTracks && video.textTracks.length > 0) {
-          const subs = Array.from(video.textTracks).map((t, idx) => ({
-            id: idx,
-            name: t.label || t.language || `Subtítulo ${idx + 1}`,
-            lang: t.language || '',
-          }));
-          setSubtitleTracks(subs);
-        }
-      }, { once: true });
+      video.addEventListener('loadedmetadata', seekToInitial, { once: true });
       video.play().then(() => setIsLoadingVideo(false)).catch(() => setIsPlaying(false));
     }
 
@@ -490,8 +553,13 @@ export default function MediaPlayer({
             {/* Tab Contents */}
             <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
               {activeMenuTab === 'audio' && (
-                audioTracks.length === 0 ? (
-                  <p className="text-xs text-neutral-500 italic py-4 text-center">Audio principal (Pista Predeterminada)</p>
+                audioTracks.length <= 1 ? (
+                  <div className="py-4 text-center space-y-2">
+                    <p className="text-xs text-neutral-400 font-medium">Pista Única de Audio Incorporada</p>
+                    <p className="text-[11px] text-neutral-500 leading-relaxed px-4">
+                      Esta película/canal posee una pista de audio codificada en su transmisión original. Si la película está en inglés, busca en las categorías la versión <span className="text-red-400 font-semibold">"Latino"</span> o <span className="text-red-400 font-semibold">"Subtitulada"</span>.
+                    </p>
+                  </div>
                 ) : (
                   audioTracks.map((track, idx) => (
                     <button
@@ -526,21 +594,27 @@ export default function MediaPlayer({
                     {selectedSubtitleTrack === -1 && <Check className="w-4 h-4 text-red-500" />}
                   </button>
 
-                  {subtitleTracks.map((track, idx) => (
-                    <button
-                      key={idx}
-                      data-dpad-id={`player-sub-track-${idx}`}
-                      onClick={() => handleSelectSubtitleTrack(idx)}
-                      className={`dpad-focusable w-full px-4 py-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                        selectedSubtitleTrack === idx
-                          ? 'bg-red-950/80 border-red-600 text-white'
-                          : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
-                      }`}
-                    >
-                      <span>{track.name || track.lang || `Subtítulo ${idx + 1}`}</span>
-                      {selectedSubtitleTrack === idx && <Check className="w-4 h-4 text-red-500" />}
-                    </button>
-                  ))}
+                  {subtitleTracks.length === 0 ? (
+                    <p className="text-xs text-neutral-500 italic py-4 text-center">
+                      No hay pistas de subtítulos incrustadas en este archivo.
+                    </p>
+                  ) : (
+                    subtitleTracks.map((track, idx) => (
+                      <button
+                        key={idx}
+                        data-dpad-id={`player-sub-track-${idx}`}
+                        onClick={() => handleSelectSubtitleTrack(idx)}
+                        className={`dpad-focusable w-full px-4 py-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
+                          selectedSubtitleTrack === idx
+                            ? 'bg-red-950/80 border-red-600 text-white'
+                            : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
+                        }`}
+                      >
+                        <span>{track.name || track.lang || `Subtítulo ${idx + 1}`}</span>
+                        {selectedSubtitleTrack === idx && <Check className="w-4 h-4 text-red-500" />}
+                      </button>
+                    ))
+                  )}
                 </>
               )}
             </div>
