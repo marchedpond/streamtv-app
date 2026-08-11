@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check, PictureInPicture } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check, PictureInPicture, SkipBack, SkipForward } from 'lucide-react';
 
 const Rewind10Icon = ({ className = 'w-6 h-6' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -26,6 +26,8 @@ export default function MediaPlayer({
   initialTime = 0,
   onClose,
   onProgressUpdate,
+  onNextTrack,
+  onPrevTrack,
 }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
@@ -40,6 +42,7 @@ export default function MediaPlayer({
   const [errorMsg, setErrorMsg] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const triggerSilentReloadRef = useRef(null);
+  const isLive = itemData?.type === 'live';
 
   // Seek Ripple Animation State
   const [seekFeedback, setSeekFeedback] = useState(null);
@@ -672,7 +675,11 @@ export default function MediaPlayer({
             const isButtonFocused = activeId && activeId !== 'player-timeline-slider';
             if (!isButtonFocused) {
               e.preventDefault();
-              seek(-10);
+              if (isLive) {
+                if (onPrevTrack) onPrevTrack();
+              } else {
+                seek(-10);
+              }
             }
           }
           break;
@@ -682,7 +689,11 @@ export default function MediaPlayer({
             const isButtonFocused = activeId && activeId !== 'player-timeline-slider';
             if (!isButtonFocused) {
               e.preventDefault();
-              seek(10);
+              if (isLive) {
+                if (onNextTrack) onNextTrack();
+              } else {
+                seek(10);
+              }
             }
           }
           break;
@@ -1060,15 +1071,25 @@ export default function MediaPlayer({
               </span>
             </div>
 
-            {/* Center: Main Playback Controls (Rewind -10, Play/Pause, Forward +10) */}
+            {/* Center: Main Playback Controls (Rewind -10 or SkipBack, Play/Pause, Forward +10 or SkipForward) */}
             <div className="flex items-center gap-4">
               <button
                 data-dpad-id="player-btn-rewind"
-                onClick={() => seek(-10)}
+                onClick={() => {
+                  if (isLive) {
+                    if (onPrevTrack) onPrevTrack();
+                  } else {
+                    seek(-10);
+                  }
+                }}
                 className="dpad-focusable p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
-                title="Retroceder 10 segundos"
+                title={isLive ? 'Canal anterior' : 'Retroceder 10 segundos'}
               >
-                <Rewind10Icon className="w-6 h-6 text-neutral-200" />
+                {isLive ? (
+                  <SkipBack className="w-6 h-6 text-neutral-200" />
+                ) : (
+                  <Rewind10Icon className="w-6 h-6 text-neutral-200" />
+                )}
               </button>
 
               <button
@@ -1082,11 +1103,21 @@ export default function MediaPlayer({
 
               <button
                 data-dpad-id="player-btn-forward"
-                onClick={() => seek(10)}
+                onClick={() => {
+                  if (isLive) {
+                    if (onNextTrack) onNextTrack();
+                  } else {
+                    seek(10);
+                  }
+                }}
                 className="dpad-focusable p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
-                title="Adelantar 10 segundos"
+                title={isLive ? 'Canal siguiente' : 'Adelantar 10 segundos'}
               >
-                <Forward10Icon className="w-6 h-6 text-neutral-200" />
+                {isLive ? (
+                  <SkipForward className="w-6 h-6 text-neutral-200" />
+                ) : (
+                  <Forward10Icon className="w-6 h-6 text-neutral-200" />
+                )}
               </button>
             </div>
 

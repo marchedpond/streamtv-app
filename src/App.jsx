@@ -7,7 +7,7 @@ import SeriesSection from './components/SeriesSection';
 import MediaPlayer from './components/MediaPlayer';
 import ContinueWatching from './components/ContinueWatching';
 import { useDPadNavigation } from './hooks/useDPadNavigation';
-import { authenticateAccount } from './services/xtream';
+import { authenticateAccount, getLiveStreamUrl } from './services/xtream';
 import { fetchWatchHistory, saveWatchProgress } from './services/history';
 import { Radio, RefreshCw, AlertCircle, Play, RotateCcw, X } from 'lucide-react';
 
@@ -18,6 +18,10 @@ export default function App() {
 
   // Active Video Stream State for MediaPlayer
   const [activeStream, setActiveStream] = useState(null);
+
+  // Active Playlist State for sequential channel changes
+  const [activePlaylist, setActivePlaylist] = useState([]);
+  const [activePlaylistIndex, setActivePlaylistIndex] = useState(-1);
 
   // Pending Stream for Resume Modal
   const [pendingResumeStream, setPendingResumeStream] = useState(null);
@@ -76,7 +80,10 @@ export default function App() {
   }, [authStatus, activeTab, focusElement, loadHistory]);
 
   // Handle Play Request (Check if saved progress exists)
-  const handlePlayRequest = (streamData) => {
+  const handlePlayRequest = (streamData, playlist = [], index = -1) => {
+    setActivePlaylist(playlist);
+    setActivePlaylistIndex(index);
+
     if (streamData.type === 'live') {
       setActiveStream({ ...streamData, initialTime: 0 });
       return;
@@ -96,6 +103,36 @@ export default function App() {
     } else {
       setActiveStream({ ...streamData, initialTime: 0 });
     }
+  };
+
+  const playPlaylistedItem = (index) => {
+    const ch = activePlaylist[index];
+    if (!ch) return;
+    setActivePlaylistIndex(index);
+
+    if (activeStream?.type === 'live') {
+      setActiveStream({
+        id: ch.stream_id,
+        type: 'live',
+        title: ch.name,
+        subtitle: `Canal #${ch.num || ch.stream_id}`,
+        poster: ch.stream_icon,
+        url: getLiveStreamUrl(ch.stream_id),
+        initialTime: 0,
+      });
+    }
+  };
+
+  const handleNextTrack = () => {
+    if (activePlaylist.length === 0) return;
+    const nextIdx = (activePlaylistIndex + 1) % activePlaylist.length;
+    playPlaylistedItem(nextIdx);
+  };
+
+  const handlePrevTrack = () => {
+    if (activePlaylist.length === 0) return;
+    const prevIdx = (activePlaylistIndex - 1 + activePlaylist.length) % activePlaylist.length;
+    playPlaylistedItem(prevIdx);
   };
 
   const startPlayback = (streamData, startFromBeginning = false) => {
@@ -282,6 +319,8 @@ export default function App() {
                 loadHistory();
               }}
               onProgressUpdate={handleProgressUpdate}
+              onNextTrack={activePlaylist.length > 0 ? handleNextTrack : null}
+              onPrevTrack={activePlaylist.length > 0 ? handlePrevTrack : null}
             />
           )}
         </>

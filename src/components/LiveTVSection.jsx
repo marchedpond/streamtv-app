@@ -239,6 +239,7 @@ export default function LiveTVSection({ onPlayStream }) {
                     data-dpad-id={`livetv-ch-${ch.stream_id}`}
                     onClick={() => {
                       setSelectedChannel(ch);
+                      const index = filteredChannels.findIndex(item => item.stream_id === ch.stream_id);
                       onPlayStream({
                         id: ch.stream_id,
                         type: 'live',
@@ -246,7 +247,7 @@ export default function LiveTVSection({ onPlayStream }) {
                         subtitle: `Canal #${ch.num || ch.stream_id}`,
                         poster: ch.stream_icon,
                         url: getLiveStreamUrl(ch.stream_id),
-                      });
+                      }, filteredChannels, index);
                     }}
                     className={`dpad-focusable glass-panel p-2.5 sm:p-3 rounded-2xl flex items-center gap-2.5 sm:gap-3 cursor-pointer border transition-all duration-200 ${
                       isSelected
@@ -319,6 +320,7 @@ export default function LiveTVSection({ onPlayStream }) {
           <button
             data-dpad-id="livetv-preview-play-btn"
             onClick={() => {
+              const index = filteredChannels.findIndex(item => item.stream_id === selectedChannel.stream_id);
               onPlayStream({
                 id: selectedChannel.stream_id,
                 type: 'live',
@@ -326,7 +328,7 @@ export default function LiveTVSection({ onPlayStream }) {
                 subtitle: `Canal #${selectedChannel.num || selectedChannel.stream_id}`,
                 poster: selectedChannel.stream_icon,
                 url: getLiveStreamUrl(selectedChannel.stream_id),
-              });
+              }, filteredChannels, index);
             }}
             className="dpad-focusable w-full py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-950/80 transition-all transform hover:scale-[1.02]"
           >
