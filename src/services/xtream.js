@@ -1,19 +1,17 @@
 /**
  * Service for interacting with Xtream Codes API
- * Connects securely to IPTV server and generates direct media stream URLs for video playback.
+ * Uses /api_proxy for metadata and /api_stream for video streaming.
+ * Completely hides credentials (username, password, server URLs) from client browser & eliminates Mixed Content blocking.
  */
 
 export const getCredentials = () => {
-  const server = import.meta.env.VITE_IPTV_SERVER || 'http://reydereyes.xyz:8080';
-  const user = import.meta.env.VITE_IPTV_USER || 'JosueMejia';
-  const pass = import.meta.env.VITE_IPTV_PASS || 'PPw3tAhK4P';
-
-  const cleanedServer = server.replace(/\/+$/, '');
-  return { server: cleanedServer, user, pass };
+  return {
+    server: 'Servidor IPTV',
+    user: 'Usuario Activo',
+  };
 };
 
 const getApiEndpoint = () => {
-  // Use /api_proxy for metadata API calls (hides credentials in dev & prod)
   return {
     url: '/api_proxy',
   };
@@ -107,8 +105,7 @@ export const getAllLiveStreams = async (categories = []) => {
 };
 
 export const getLiveStreamUrl = (streamId) => {
-  const { server, user, pass } = getCredentials();
-  return `${server}/live/${user}/${pass}/${streamId}.m3u8`;
+  return `/api_stream/live/${streamId}.m3u8`;
 };
 
 /**
@@ -150,9 +147,8 @@ export const getVodInfo = async (vodId) => {
 };
 
 export const getMovieStreamUrl = (streamId, containerExtension = 'mp4') => {
-  const { server, user, pass } = getCredentials();
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  return `${server}/movie/${user}/${pass}/${streamId}.${ext}`;
+  return `/api_stream/movie/${streamId}.${ext}`;
 };
 
 /**
@@ -194,7 +190,6 @@ export const getSeriesInfo = async (seriesId) => {
 };
 
 export const getEpisodeStreamUrl = (streamId, containerExtension = 'mp4') => {
-  const { server, user, pass } = getCredentials();
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  return `${server}/series/${user}/${pass}/${streamId}.${ext}`;
+  return `/api_stream/series/${streamId}.${ext}`;
 };
