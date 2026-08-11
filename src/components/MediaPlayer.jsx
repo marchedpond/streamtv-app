@@ -250,15 +250,16 @@ export default function MediaPlayer({
       onMouseMove={handleUserActivity}
       className="fixed inset-0 z-50 bg-black flex items-center justify-center overflow-hidden font-['Outfit'] select-none"
     >
-      {/* HTML5 Video Element */}
+      {/* HTML5 Video Element with referrerPolicy="no-referrer" */}
       <video
         ref={videoRef}
+        referrerPolicy="no-referrer"
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => {
           setIsPlaying(false);
           if (videoRef.current) triggerSaveProgress(videoRef.current.currentTime, videoRef.current.duration);
         }}
-        onError={() => setErrorMsg('Ocurrió un error inesperado al cargar el video.')}
+        onError={() => setErrorMsg('Ocurrió un error al conectar con la transmisión del video.')}
         className="w-full h-full object-contain"
         autoPlay
         playsInline
@@ -266,8 +267,8 @@ export default function MediaPlayer({
 
       {/* Error Overlay */}
       {errorMsg && (
-        <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center text-center p-6 space-y-4">
-          <div className="w-16 h-16 rounded-full bg-red-950/80 border border-red-800 flex items-center justify-center text-red-500">
+        <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center text-center p-6 space-y-4 z-50">
+          <div className="w-16 h-16 rounded-full bg-red-950/80 border border-red-800 flex items-center justify-center text-red-500 shadow-xl">
             <AlertTriangle className="w-8 h-8" />
           </div>
           <h3 className="text-xl font-bold text-white">Error de Transmisión</h3>
@@ -306,7 +307,7 @@ export default function MediaPlayer({
 
           <div className="flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-full text-xs font-semibold text-neutral-300">
             <Tv className="w-4 h-4 text-red-500" />
-            <span>IPTV Player</span>
+            <span>StreamTV Player</span>
           </div>
         </div>
 
