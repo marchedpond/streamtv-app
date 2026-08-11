@@ -145,15 +145,138 @@ export default function MediaPlayer({
     }
   };
 
+  // Sync Audio and Subtitle tracks from Hls.js and native video element
+  const syncTracks = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (hlsRef.current) {
+      const hls = hlsRef.current;
+
+      // Sync Audio Tracks
+      if (hls.audioTracks && hls.audioTracks.length > 0) {
+        const formattedAudio = hls.audioTracks.map((t) => ({
+          id: t.id,
+          name: t.name || (t.lang ? `Audio (${t.lang.toUpperCase()})` : `Pista de Audio ${t.id + 1}`),
+          lang: t.lang || '',
+        }));
+        setAudioTracks(formattedAudio);
+        setSelectedAudioTrack(hls.audioTrack);
+      }
+
+      // Sync Subtitle Tracks (merge HLS.js tracks and native textTracks if any)
+      let formattedSubs = [];
+      if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
+        formattedSubs = hls.subtitleTracks.map((t) => ({
+          id: t.id,
+          name: t.name || (t.lang ? `Subtítulo (${t.lang.toUpperCase()})` : `Subtítulo ${t.id + 1}`),
+          lang: t.lang || '',
+        }));
+      }
+
+      // Read native subtitle tracks from the video element and merge
+      if (video.textTracks && video.textTracks.length > 0) {
+        const subTracks = Array.from(video.textTracks).filter(
+          (t) => t.kind === 'subtitles' || t.kind === 'captions'
+        );
+        subTracks.forEach((t, idx) => {
+          const lang = t.language || '';
+          const name = t.label || (t.language ? `Subtítulo (${t.language.toUpperCase()})` : `Subtítulo ${idx + 1}`);
+          // Prevent duplicates by comparing name & language
+          const exists = formattedSubs.some(
+            (fs) => fs.lang.toLowerCase() === lang.toLowerCase() && fs.name.toLowerCase() === name.toLowerCase()
+          );
+          if (!exists) {
+            formattedSubs.push({
+              id: `native-${idx}`,
+              name,
+              lang,
+              isNative: true,
+              trackRef: t,
+            });
+          }
+        });
+      }
+
+      setSubtitleTracks(formattedSubs);
+
+      // Resolve selected subtitle index
+      if (hls.subtitleTrack >= 0) {
+        setSelectedSubtitleTrack(hls.subtitleTrack);
+      } else {
+        const nativeActiveIdx = formattedSubs.findIndex((t) => t.isNative && t.trackRef.mode === 'showing');
+        if (nativeActiveIdx >= 0) {
+          setSelectedSubtitleTrack(formattedSubs[nativeActiveIdx].id);
+        } else {
+          setSelectedSubtitleTrack(-1);
+        }
+      }
+      return;
+    }
+
+    // Native Video Element fallback (Safari native HLS or direct MP4/MKV)
+    if (video.audioTracks && video.audioTracks.length > 0) {
+      const tracks = Array.from(video.audioTracks).map((t, idx) => ({
+        id: idx,
+        name: t.label || (t.language ? `Audio (${t.language.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
+        lang: t.language || '',
+      }));
+      setAudioTracks(tracks);
+      const activeIdx = Array.from(video.audioTracks).findIndex((t) => t.enabled);
+      setSelectedAudioTrack(activeIdx >= 0 ? activeIdx : 0);
+    }
+
+    if (video.textTracks && video.textTracks.length > 0) {
+      const subTracks = Array.from(video.textTracks).filter(
+        (t) => t.kind === 'subtitles' || t.kind === 'captions'
+      );
+      const tracks = subTracks.map((t, idx) => ({
+        id: idx,
+        name: t.label || (t.language ? `Subtítulo (${t.language.toUpperCase()})` : `Subtítulo ${idx + 1}`),
+        lang: t.language || '',
+      }));
+      setSubtitleTracks(tracks);
+      const activeIdx = subTracks.findIndex((t) => t.mode === 'showing');
+      setSelectedSubtitleTrack(activeIdx);
+    }
+  }, []);
+
   // Switch Subtitle Track
   const handleSelectSubtitleTrack = (trackId) => {
     setSelectedSubtitleTrack(trackId);
-    if (hlsRef.current) {
-      hlsRef.current.subtitleTrack = trackId;
-    } else if (videoRef.current && videoRef.current.textTracks) {
-      Array.from(videoRef.current.textTracks).forEach((t, idx) => {
-        t.mode = idx === trackId ? 'showing' : 'disabled';
+
+    const video = videoRef.current;
+    if (video && video.textTracks) {
+      // Disable all native tracks to prevent overlap
+      Array.from(video.textTracks).forEach((t) => {
+        t.mode = 'disabled';
       });
+    }
+
+    if (hlsRef.current) {
+      if (typeof trackId === 'string' && trackId.startsWith('native-')) {
+        hlsRef.current.subtitleTrack = -1; // Disable Hls.js subtitle rendering
+        const idx = parseInt(trackId.replace('native-', ''), 10);
+        if (video && video.textTracks) {
+          const subTracks = Array.from(video.textTracks).filter(
+            (t) => t.kind === 'subtitles' || t.kind === 'captions'
+          );
+          if (subTracks[idx]) {
+            subTracks[idx].mode = 'showing';
+          }
+        }
+      } else {
+        // Switch using Hls.js
+        hlsRef.current.subtitleTrack = typeof trackId === 'number' ? trackId : parseInt(trackId, 10);
+      }
+    } else if (video && video.textTracks) {
+      const idx = typeof trackId === 'number' ? trackId : parseInt(trackId, 10);
+      const subTracks = Array.from(video.textTracks).filter(
+        (t) => t.kind === 'subtitles' || t.kind === 'captions'
+      );
+      if (subTracks[idx]) {
+        subTracks[idx].mode = 'showing';
+      }
     }
   };
 
@@ -162,45 +285,15 @@ export default function MediaPlayer({
     if (!video) return;
 
     if (video.audioTracks) {
-      const updateAudioTracks = () => {
-        const tracks = Array.from(video.audioTracks).map((t, idx) => ({
-          id: idx,
-          name: t.label || (t.language ? `Audio (${t.language.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
-          lang: t.language || '',
-          enabled: t.enabled,
-        }));
-        if (tracks.length > 0) {
-          setAudioTracks(tracks);
-          const activeIdx = tracks.findIndex((t) => t.enabled);
-          setSelectedAudioTrack(activeIdx >= 0 ? activeIdx : 0);
-        }
-      };
-
-      video.audioTracks.addEventListener('addtrack', updateAudioTracks);
-      video.audioTracks.addEventListener('removetrack', updateAudioTracks);
-      video.audioTracks.addEventListener('change', updateAudioTracks);
-      updateAudioTracks();
+      video.audioTracks.addEventListener('addtrack', syncTracks);
+      video.audioTracks.addEventListener('removetrack', syncTracks);
+      video.audioTracks.addEventListener('change', syncTracks);
     }
 
     if (video.textTracks) {
-      const updateTextTracks = () => {
-        const tracks = Array.from(video.textTracks)
-          .filter((t) => t.kind === 'subtitles' || t.kind === 'captions')
-          .map((t, idx) => ({
-            id: idx,
-            name: t.label || (t.language ? `Subtítulo (${t.language.toUpperCase()})` : `Subtítulo ${idx + 1}`),
-            lang: t.language || '',
-            mode: t.mode,
-          }));
-        setSubtitleTracks(tracks);
-        const activeIdx = tracks.findIndex((t) => t.mode === 'showing');
-        setSelectedSubtitleTrack(activeIdx);
-      };
-
-      video.textTracks.addEventListener('addtrack', updateTextTracks);
-      video.textTracks.addEventListener('removetrack', updateTextTracks);
-      video.textTracks.addEventListener('change', updateTextTracks);
-      updateTextTracks();
+      video.textTracks.addEventListener('addtrack', syncTracks);
+      video.textTracks.addEventListener('removetrack', syncTracks);
+      video.textTracks.addEventListener('change', syncTracks);
     }
   };
 
@@ -367,49 +460,19 @@ export default function MediaPlayer({
             setIsPlaying(false);
             setIsLoadingVideo(false);
           });
-
-        if (hlsInstance.audioTracks && hlsInstance.audioTracks.length > 0) {
-          const formattedAudio = hlsInstance.audioTracks.map((t, idx) => ({
-            id: idx,
-            name: t.name || (t.lang ? `Audio (${t.lang.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
-            lang: t.lang || '',
-          }));
-          setAudioTracks(formattedAudio);
-          setSelectedAudioTrack(hlsInstance.audioTrack >= 0 ? hlsInstance.audioTrack : 0);
-        }
-        if (hlsInstance.subtitleTracks && hlsInstance.subtitleTracks.length > 0) {
-          const formattedSub = hlsInstance.subtitleTracks.map((t, idx) => ({
-            id: idx,
-            name: t.name || (t.lang ? `Subtítulo (${t.lang.toUpperCase()})` : `Subtítulo ${idx + 1}`),
-            lang: t.lang || '',
-          }));
-          setSubtitleTracks(formattedSub);
-          setSelectedSubtitleTrack(hlsInstance.subtitleTrack);
-        }
+        syncTracks();
       });
 
-      hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, (event, data) => {
-        if (data && data.audioTracks && data.audioTracks.length > 0) {
-          const formattedAudio = data.audioTracks.map((t, idx) => ({
-            id: idx,
-            name: t.name || (t.lang ? `Audio (${t.lang.toUpperCase()})` : `Pista de Audio ${idx + 1}`),
-            lang: t.lang || '',
-          }));
-          setAudioTracks(formattedAudio);
-          setSelectedAudioTrack(hlsInstance.audioTrack >= 0 ? hlsInstance.audioTrack : 0);
-        }
+      hlsInstance.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        syncTracks();
       });
 
-      hlsInstance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (event, data) => {
-        if (data && data.subtitleTracks && data.subtitleTracks.length > 0) {
-          const formattedSub = data.subtitleTracks.map((t, idx) => ({
-            id: idx,
-            name: t.name || (t.lang ? `Subtítulo (${t.lang.toUpperCase()})` : `Subtítulo ${idx + 1}`),
-            lang: t.lang || '',
-          }));
-          setSubtitleTracks(formattedSub);
-          setSelectedSubtitleTrack(hlsInstance.subtitleTrack);
-        }
+      hlsInstance.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+        syncTracks();
+      });
+
+      hlsInstance.on(Hls.Events.LEVEL_LOADED, () => {
+        syncTracks();
       });
 
       hlsInstance.on(Hls.Events.ERROR, (event, data) => {
@@ -604,12 +667,24 @@ export default function MediaPlayer({
           }
           break;
         case 'ArrowLeft':
-          e.preventDefault();
-          seek(-10);
+          {
+            const activeId = document.activeElement?.getAttribute('data-dpad-id');
+            const isButtonFocused = activeId && activeId !== 'player-timeline-slider';
+            if (!isButtonFocused) {
+              e.preventDefault();
+              seek(-10);
+            }
+          }
           break;
         case 'ArrowRight':
-          e.preventDefault();
-          seek(10);
+          {
+            const activeId = document.activeElement?.getAttribute('data-dpad-id');
+            const isButtonFocused = activeId && activeId !== 'player-timeline-slider';
+            if (!isButtonFocused) {
+              e.preventDefault();
+              seek(10);
+            }
+          }
           break;
         case 'ArrowUp':
           if (videoRef.current) {
@@ -1019,7 +1094,7 @@ export default function MediaPlayer({
             <div className="flex items-center gap-2.5">
               <button
                 data-dpad-id="player-btn-audiosub"
-                onClick={() => setShowAudioSubMenu(true)}
+                onClick={() => { syncTracks(); setShowAudioSubMenu(true); }}
                 className={`dpad-focusable px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer border flex items-center gap-2 text-xs font-bold ${
                   showAudioSubMenu || hasMultipleTracks
                     ? 'bg-red-950/90 border-red-600 text-white shadow-lg shadow-red-950/50'

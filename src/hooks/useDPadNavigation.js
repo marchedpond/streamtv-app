@@ -112,10 +112,16 @@ export function useDPadNavigation({ activeZone = 'main', onBack = null, isPlayer
 
       switch (e.key) {
         case 'ArrowRight':
+          if (document.activeElement?.getAttribute('data-dpad-id') === 'player-timeline-slider') {
+            return;
+          }
           e.preventDefault();
           moveFocus('RIGHT');
           break;
         case 'ArrowLeft':
+          if (document.activeElement?.getAttribute('data-dpad-id') === 'player-timeline-slider') {
+            return;
+          }
           e.preventDefault();
           moveFocus('LEFT');
           break;
