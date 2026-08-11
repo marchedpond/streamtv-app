@@ -447,7 +447,7 @@ export default function MediaPlayer({
     setDuration(dur || 0);
     setProgress(dur ? (curr / dur) * 100 : 0);
 
-    if (Math.abs(curr - lastSavedTimeRef.current) >= 25) {
+    if (Math.abs(curr - lastSavedTimeRef.current) >= 10) {
       lastSavedTimeRef.current = curr;
       triggerSaveProgress(curr, dur);
     }

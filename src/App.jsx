@@ -65,14 +65,15 @@ export default function App() {
     initAuth();
   }, []);
 
-  // Default Focus on Header navigation after load
+  // Default Focus on Header navigation after load & refresh history on tab change
   useEffect(() => {
     if (authStatus === 'success') {
+      loadHistory();
       setTimeout(() => {
         focusElement(`header-nav-${activeTab}`);
       }, 300);
     }
-  }, [authStatus, activeTab, focusElement]);
+  }, [authStatus, activeTab, focusElement, loadHistory]);
 
   // Handle Play Request (Check if saved progress exists)
   const handlePlayRequest = (streamData) => {
@@ -276,7 +277,10 @@ export default function App() {
               subtitle={activeStream.subtitle}
               streamUrl={activeStream.url}
               initialTime={activeStream.initialTime || 0}
-              onClose={() => setActiveStream(null)}
+              onClose={() => {
+                setActiveStream(null);
+                loadHistory();
+              }}
               onProgressUpdate={handleProgressUpdate}
             />
           )}

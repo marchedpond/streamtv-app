@@ -11,7 +11,7 @@ const getLocalHistory = () => {
     const list = raw ? JSON.parse(raw) : [];
     return list.filter((i) => {
       const isVodOrSeries = i.item_type === 'vod' || i.item_type === 'series';
-      const inProgress = i.progress_seconds > 10 && (!i.duration_seconds || i.progress_seconds < i.duration_seconds - 30);
+      const inProgress = i.progress_seconds >= 3 && (!i.duration_seconds || i.progress_seconds < i.duration_seconds - 20);
       return isVodOrSeries && inProgress;
     });
   } catch (err) {
@@ -27,8 +27,8 @@ const saveLocalHistory = (item) => {
     const compositeId = `${item.item_type || 'vod'}_${item.item_id}`;
     const filtered = list.filter((i) => i.id !== compositeId);
 
-    const isFinished = item.duration_seconds > 0 && item.progress_seconds >= item.duration_seconds - 30;
-    const isTooShort = item.progress_seconds <= 10;
+    const isFinished = item.duration_seconds > 0 && item.progress_seconds >= item.duration_seconds - 20;
+    const isTooShort = item.progress_seconds < 3;
 
     if (!isFinished && !isTooShort) {
       const newItem = {
@@ -39,7 +39,7 @@ const saveLocalHistory = (item) => {
       filtered.unshift(newItem);
     }
 
-    const trimmed = filtered.slice(0, 15);
+    const trimmed = filtered.slice(0, 20);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
   } catch (err) {
     console.error('LocalStorage history save error:', err);

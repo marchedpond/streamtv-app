@@ -2,7 +2,7 @@ import { neon } from '@neondatabase/serverless';
 
 /**
  * Serverless API Route for Watch History in Neon PostgreSQL
- * Only stores VOD Movies and Series episodes left in-progress ("a medias").
+ * Stores VOD Movies and Series episodes left in-progress ("a medias").
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -42,10 +42,10 @@ export default async function handler(req, res) {
       const history = await sql`
         SELECT * FROM watch_history 
         WHERE item_type IN ('vod', 'series')
-          AND progress_seconds > 10
-          AND (duration_seconds = 0 OR progress_seconds < (duration_seconds - 30))
+          AND progress_seconds >= 3
+          AND (duration_seconds = 0 OR progress_seconds < (duration_seconds - 20))
         ORDER BY updated_at DESC 
-        LIMIT 15;
+        LIMIT 20;
       `;
       return res.status(200).json({ success: true, history });
     }
@@ -74,10 +74,10 @@ export default async function handler(req, res) {
 
       const compositeId = `${item_type}_${item_id}`;
 
-      const isFinished = duration_seconds > 0 && progress_seconds >= (duration_seconds - 30);
-      const isTooShort = progress_seconds <= 10;
+      const isFinished = duration_seconds > 0 && progress_seconds >= (duration_seconds - 20);
+      const isTooShort = progress_seconds < 3;
 
-      // Delete if finished or too short
+      // Delete if finished or under 3 seconds
       if (isFinished || isTooShort) {
         await sql`DELETE FROM watch_history WHERE id = ${compositeId};`;
         return res.status(200).json({ success: true, message: 'Item completed or removed from history' });
