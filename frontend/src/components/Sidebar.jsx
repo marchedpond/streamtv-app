@@ -1,12 +1,16 @@
 import React from 'react';
-import { Tv, Film, Clapperboard, RefreshCw, Radio } from 'lucide-react';
+import { Tv, Film, Clapperboard, RefreshCw, Radio, Shield, LogOut } from 'lucide-react';
 
-export default function Sidebar({ activeTab, setActiveTab, onRefresh }) {
+export default function Sidebar({ activeTab, setActiveTab, onRefresh, user, onLogout }) {
   const menuItems = [
     { id: 'live', label: 'TV en Vivo', icon: Tv },
     { id: 'movies', label: 'Películas', icon: Film },
     { id: 'series', label: 'Series', icon: Clapperboard },
   ];
+
+  if (user?.role === 'admin') {
+    menuItems.push({ id: 'admin', label: 'Panel Admin', icon: Shield });
+  }
 
   return (
     <aside className="hidden md:flex w-64 glass-panel border-r border-neutral-800 flex-col justify-between p-4 z-30 select-none flex-shrink-0">
@@ -43,13 +47,24 @@ export default function Sidebar({ activeTab, setActiveTab, onRefresh }) {
             Acciones
           </p>
 
+          {user?.role === 'admin' && (
+            <button
+              data-dpad-id="sidebar-action-refresh"
+              onClick={onRefresh}
+              className="dpad-focusable w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium text-xs text-neutral-400 hover:text-white hover:bg-neutral-800/60 cursor-pointer transition-all"
+            >
+              <RefreshCw className="w-4 h-4 text-emerald-400" />
+              <span>Actualizar Listas</span>
+            </button>
+          )}
+
           <button
-            data-dpad-id="sidebar-action-refresh"
-            onClick={onRefresh}
-            className="dpad-focusable w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium text-xs text-neutral-400 hover:text-white hover:bg-neutral-800/60 cursor-pointer transition-all"
+            data-dpad-id="sidebar-action-logout"
+            onClick={onLogout}
+            className="dpad-focusable w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium text-xs text-neutral-400 hover:text-red-400 hover:bg-red-950/20 cursor-pointer transition-all"
           >
-            <RefreshCw className="w-4 h-4 text-emerald-400" />
-            <span>Actualizar Listas</span>
+            <LogOut className="w-4 h-4 text-red-500" />
+            <span>Cerrar Sesión</span>
           </button>
         </div>
       </div>

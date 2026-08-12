@@ -327,6 +327,7 @@ export default function SeriesSection({ onPlayStream }) {
                         data-dpad-id={`series-ep-${ep.id}`}
                         onClick={() => {
                           const playUrl = getEpisodeStreamUrl(ep.id, ep.container_extension);
+                          const audioCodec = ep.info?.audio?.codec_name || ep.audio?.codec_name;
                           onPlayStream({
                             id: ep.id,
                             type: 'series',
@@ -334,6 +335,8 @@ export default function SeriesSection({ onPlayStream }) {
                             subtitle: ep.title || `Episodio ${ep.episode_num}`,
                             poster: selectedSeries.cover,
                             url: playUrl,
+                            audioCodec: audioCodec,
+                            container_extension: ep.container_extension
                           });
                           setSelectedSeries(null);
                         }}

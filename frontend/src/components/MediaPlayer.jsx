@@ -41,6 +41,10 @@ export default function MediaPlayer({
   const [isBuffering, setIsBuffering] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryCountdown, setRetryCountdown] = useState(0);
+  const autoRetryTimerRef = useRef(null);
+  const retryCountdownRef = useRef(null);
   const triggerSilentReloadRef = useRef(null);
   const isLive = itemData?.type === 'live';
 
@@ -59,19 +63,85 @@ export default function MediaPlayer({
   // Proxy Subtitle Tracks for VOD/Series
   const [proxySubtitleTracks, setProxySubtitleTracks] = useState([]);
   const [trackTransition, setTrackTransition] = useState(null);
+  const [unsupportedAudioCodec, setUnsupportedAudioCodec] = useState(false);
+
+  // Custom subtitle renderer state (bypasses unreliable native <track> API)
+  const subtitleCuesRef = useRef([]);       // [{start, end, text}]
+  const [currentSubtitleText, setCurrentSubtitleText] = useState(null);
+  const [isLoadingSubtitles, setIsLoadingSubtitles] = useState(false);
+  const activeFetchControllerRef = useRef(null); // AbortController for subtitle fetch
 
   useEffect(() => {
     let active = true;
+    setUnsupportedAudioCodec(false);
+
+    // Reset subtitle state when content changes
+    if (activeFetchControllerRef.current) {
+      activeFetchControllerRef.current.abort();
+      activeFetchControllerRef.current = null;
+    }
+    subtitleCuesRef.current = [];
+    setCurrentSubtitleText(null);
+    setIsLoadingSubtitles(false);
+    setSelectedSubtitleTrack(-1);
+
+    // Check if the current audio codec is AC-3 or DTS and if browser supports it
+    const checkSupport = (codecName) => {
+      const codec = codecName?.toLowerCase() || '';
+      if (codec && (codec.includes('ac3') || codec.includes('ac-3') || codec.includes('dts') || codec.includes('eac3') || codec.includes('e-ac-3'))) {
+        const isAC3 = codec.includes('ac3') || codec.includes('ac-3') || codec.includes('eac3') || codec.includes('e-ac-3');
+        const isSupported = typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(`audio/mp4; codecs="${isAC3 ? 'ac-3' : 'dts'}"`);
+        const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent) &&
+                         !/chrome|chromium|crios/i.test(navigator.userAgent);
+        if (!isSupported && !isSafari) {
+          setUnsupportedAudioCodec(true);
+        }
+      }
+    };
+
+    // Fallback: If codec was already passed down, check it immediately
+    if (itemData?.audioCodec) {
+      // Disabled since backend does automatic on-the-fly transcoding to AAC
+      // checkSupport(itemData.audioCodec);
+    }
+
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+    const token = localStorage.getItem('streamtv_token');
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Dynamic robust fetch for Movies (VOD)
+    if (itemData?.type === 'vod') {
+      fetch(`${backendUrl}/api_proxy?action=get_vod_info&vod_id=${itemData.id}`, { headers })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch((err) => console.error('Error fetching VOD codec info:', err));
+    }
+
     if (itemData && (itemData.type === 'vod' || itemData.type === 'series')) {
       const streamId = itemData.id;
       const streamType = itemData.type;
       const containerExt = itemData.container_extension || 'mkv';
 
-      fetch(`/api_subtitles?id=${streamId}&type=${streamType}&action=tracks&ext=${containerExt}`)
+      fetch(`${backendUrl}/api_subtitles?id=${streamId}&type=${streamType}&action=tracks&ext=${containerExt}`, { headers })
         .then((res) => (res.ok ? res.json() : []))
         .then((data) => {
           if (active) {
-            setProxySubtitleTracks(data);
+            setProxySubtitleTracks(data && Array.isArray(data) ? data : []);
+            // Immediately populate subtitle tracks menu from API data
+            if (data && Array.isArray(data) && data.length > 0) {
+              const newSubTracks = data.map((t, idx) => ({
+                id: `native-${idx}`,
+                name: t.name || t.title || (t.language ? `Subtítulo (${t.language.toUpperCase()})` : `Subtítulo ${idx + 1}`),
+                lang: t.language || t.lang || '',
+                isNative: true,
+              }));
+              setSubtitleTracks(prev => {
+                const hlsTracks = prev.filter(t => !t.isNative);
+                return [...hlsTracks, ...newSubTracks];
+              });
+            }
           }
         })
         .catch((err) => {
@@ -86,6 +156,17 @@ export default function MediaPlayer({
       active = false;
     };
   }, [itemData]);
+
+  // Copy streaming URL for external players
+  const handleCopyLink = () => {
+    const absoluteStreamUrl = window.location.origin + streamUrl;
+    navigator.clipboard.writeText(absoluteStreamUrl)
+      .then(() => {
+        setSeekFeedback({ id: Date.now(), type: 'clipboard-copy', label: 'Enlace Copiado!' });
+        setTimeout(() => setSeekFeedback(null), 1500);
+      })
+      .catch((err) => console.error('Failed to copy link:', err));
+  };
 
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -133,13 +214,22 @@ export default function MediaPlayer({
 
   // Manual Retry Handler
   const handleManualRetry = () => {
+    // Clear auto-retry timers
+    if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
+    if (retryCountdownRef.current) { clearInterval(retryCountdownRef.current); retryCountdownRef.current = null; }
+    setIsRetrying(false);
+    setRetryCountdown(0);
     setErrorMsg(null);
     setIsLoadingVideo(true);
-    if (hlsRef.current) {
+    setRetryCount(prev => prev + 1);
+    // Use silent reload for clean reconnect
+    if (triggerSilentReloadRef.current) {
+      triggerSilentReloadRef.current();
+    } else if (hlsRef.current) {
       hlsRef.current.startLoad();
-    }
-    if (videoRef.current) {
-      videoRef.current.play().then(() => setIsLoadingVideo(false)).catch(() => {});
+    } else if (videoRef.current) {
+      videoRef.current.load();
+      videoRef.current.play().catch(() => {});
     }
   };
 
@@ -178,6 +268,7 @@ export default function MediaPlayer({
       video.pause();
     }
     setIsPlaying(false);
+    setShowAudioSubMenu(false); // Close menu immediately
 
     setTrackTransition({ type: 'audio', name: trackName });
 
@@ -296,69 +387,158 @@ export default function MediaPlayer({
     }
   }, []);
 
-  // Switch Subtitle Track
-  const handleSelectSubtitleTrack = (trackId) => {
-    let trackName = 'Desactivados';
-    if (trackId !== -1) {
-      const track = subtitleTracks.find(t => t.id === trackId);
-      trackName = track ? track.name : 'Activados';
+  // -----------------------------------------------------------------------
+  // VTT Parser utility
+  // -----------------------------------------------------------------------
+  const parseVttTime = (str) => {
+    const clean = str.trim().replace(',', '.');
+    const parts = clean.split(':');
+    if (parts.length === 3) {
+      return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+    } else if (parts.length === 2) {
+      return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
     }
-
-    const video = videoRef.current;
-    let wasPlaying = isPlaying;
-    if (video) {
-      video.pause();
-    }
-    setIsPlaying(false);
-
-    setTrackTransition({ type: 'subtitle', name: trackName });
-
-    setSelectedSubtitleTrack(trackId);
-
-    if (video && video.textTracks) {
-      // Disable all native tracks to prevent overlap
-      Array.from(video.textTracks).forEach((t) => {
-        t.mode = 'disabled';
-      });
-    }
-
-    if (hlsRef.current) {
-      if (typeof trackId === 'string' && trackId.startsWith('native-')) {
-        hlsRef.current.subtitleTrack = -1; // Disable Hls.js subtitle rendering
-        const idx = parseInt(trackId.replace('native-', ''), 10);
-        if (video && video.textTracks) {
-          const subTracks = Array.from(video.textTracks).filter(
-            (t) => t.kind === 'subtitles' || t.kind === 'captions'
-          );
-          if (subTracks[idx]) {
-            subTracks[idx].mode = 'showing';
-          }
-        }
-      } else if (trackId === -1) {
-        hlsRef.current.subtitleTrack = -1;
-      } else {
-        // Switch using Hls.js subtitle track
-        hlsRef.current.subtitleTrack = typeof trackId === 'number' ? trackId : parseInt(trackId, 10);
-      }
-    } else if (video && video.textTracks) {
-      const idx = typeof trackId === 'number' ? trackId : parseInt(trackId, 10);
-      const subTracks = Array.from(video.textTracks).filter(
-        (t) => t.kind === 'subtitles' || t.kind === 'captions'
-      );
-      if (subTracks[idx]) {
-        subTracks[idx].mode = 'showing';
-      }
-    }
-
-    setTimeout(() => {
-      setTrackTransition(null);
-      if (video && wasPlaying) {
-        video.play()
-          .then(() => setIsPlaying(true))
-          .catch(() => setIsPlaying(false));
-      }
-    }, 1200);
+    return parseFloat(clean) || 0;
   };
+
+  const parseVtt = (vttText) => {
+    const cues = [];
+    const blocks = vttText.split(/\n\n+/);
+    for (const block of blocks) {
+      const trimmed = block.trim();
+      if (!trimmed || trimmed.startsWith('WEBVTT') || trimmed.startsWith('NOTE')) continue;
+      const lines = trimmed.split('\n');
+      const arrowLine = lines.findIndex(l => l.includes('-->'));
+      if (arrowLine === -1) continue;
+      const [startStr, endStr] = lines[arrowLine].split('-->').map(s => s.split(' ').find(p => p.includes(':')) || s.trim());
+      const text = lines.slice(arrowLine + 1).join('\n').replace(/\{[^}]+\}/g, '').replace(/<[^>]+>/g, '').trim();
+      if (text) {
+        cues.push({ start: parseVttTime(startStr), end: parseVttTime(endStr), text });
+      }
+    }
+    return cues;
+  };
+
+  // -----------------------------------------------------------------------
+  // Fetch VTT and populate subtitle cues ref
+  // -----------------------------------------------------------------------
+  const fetchSubtitleVtt = async (trackId) => {
+    // Abort any previous subtitle fetch
+    if (activeFetchControllerRef.current) {
+      activeFetchControllerRef.current.abort();
+      activeFetchControllerRef.current = null;
+    }
+    subtitleCuesRef.current = [];
+    setCurrentSubtitleText(null);
+
+    if (trackId === -1) return;
+
+    const idx = parseInt(String(trackId).replace('native-', ''), 10);
+    const track = proxySubtitleTracks[idx];
+    if (!track) return;
+
+    const trackNum = track.number !== undefined ? track.number : idx;
+    const token = localStorage.getItem('streamtv_token') || '';
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+    const containerExt = itemData?.container_extension || 'mkv';
+    const url = `${backendUrl}/api_subtitles?id=${itemData.id}&type=${itemData.type}&action=vtt&track=${trackNum}&ext=${containerExt}&token=${encodeURIComponent(token)}`;
+
+    const controller = new AbortController();
+    activeFetchControllerRef.current = controller;
+    setIsLoadingSubtitles(true);
+
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const vttText = await res.text();
+      const cues = parseVtt(vttText);
+      subtitleCuesRef.current = cues;
+      console.log(`[Subtitles] Loaded ${cues.length} cues for track ${trackNum}`);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('[Subtitles] Failed to load VTT:', err.message);
+      }
+    } finally {
+      setIsLoadingSubtitles(false);
+    }
+  };
+
+  // -----------------------------------------------------------------------
+  // Switch Subtitle Track
+  // -----------------------------------------------------------------------
+  const handleSelectSubtitleTrack = (trackId) => {
+    setSelectedSubtitleTrack(trackId);
+    setShowAudioSubMenu(false); // Close menu immediately on selection
+    fetchSubtitleVtt(trackId);
+
+    // Disable all native textTracks to prevent browser subtitle rendering
+    const video = videoRef.current;
+    if (video && video.textTracks) {
+      Array.from(video.textTracks).forEach((t) => { t.mode = 'disabled'; });
+    }
+    // Disable HLS.js subtitle rendering
+    if (hlsRef.current) hlsRef.current.subtitleTrack = -1;
+  };
+
+  // Handle non-native (numeric HLS) audio/subtitle selection
+  const handleSelectHlsSubtitleTrack = (trackId) => {
+    setSelectedSubtitleTrack(trackId);
+    setShowAudioSubMenu(false);
+    subtitleCuesRef.current = [];
+    setCurrentSubtitleText(null);
+    const idx = typeof trackId === 'number' ? trackId : parseInt(trackId, 10);
+    if (hlsRef.current && hlsRef.current.subtitleTracks?.length > 0) {
+      hlsRef.current.subtitleTrack = idx;
+    }
+  };
+
+  // Sync subtitle tracks list when proxySubtitleTracks change
+  useEffect(() => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+
+    const timer = setTimeout(() => {
+      const formattedSubs = [];
+
+      if (hlsRef.current?.subtitleTracks?.length > 0) {
+        hlsRef.current.subtitleTracks.forEach((t) => {
+          formattedSubs.push({
+            id: t.id,
+            name: t.name || (t.lang ? `Subtítulo (${t.lang.toUpperCase()})` : `Subtítulo ${t.id + 1}`),
+            lang: t.lang || '',
+          });
+        });
+      }
+
+      if (video.textTracks && video.textTracks.length > 0) {
+        const subTracks = Array.from(video.textTracks).filter(
+          (t) => t.kind === 'subtitles' || t.kind === 'captions'
+        );
+        subTracks.forEach((t, idx) => {
+          const lang = t.language || '';
+          const name = t.label || (t.language ? `Subtítulo (${t.language.toUpperCase()})` : `Subtítulo ${idx + 1}`);
+          const exists = formattedSubs.some(
+            (fs) => fs.lang.toLowerCase() === lang.toLowerCase() && fs.name.toLowerCase() === name.toLowerCase()
+          );
+          if (!exists) {
+            formattedSubs.push({
+              id: `native-${idx}`,
+              name,
+              lang,
+              isNative: true,
+              trackRef: t,
+            });
+          }
+        });
+      }
+
+      if (formattedSubs.length > 0) {
+        setSubtitleTracks(formattedSubs);
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [proxySubtitleTracks]);
 
   // Sync Native Video Audio & Subtitle Tracks
   const setupNativeTrackListeners = (video) => {
@@ -785,6 +965,14 @@ export default function MediaPlayer({
       lastSavedTimeRef.current = curr;
       triggerSaveProgress(curr, dur);
     }
+
+    // Update custom subtitle cue
+    if (subtitleCuesRef.current.length > 0) {
+      const activeCue = subtitleCuesRef.current.find(c => curr >= c.start && curr < c.end);
+      setCurrentSubtitleText(activeCue ? activeCue.text : null);
+    } else if (currentSubtitleText !== null) {
+      setCurrentSubtitleText(null);
+    }
   };
 
   const handleClose = () => {
@@ -886,6 +1074,12 @@ export default function MediaPlayer({
           setIsPlaying(true);
           setIsLoadingVideo(false);
           setIsBuffering(false);
+          // Clear any pending auto-retry when video actually plays
+          if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
+          if (retryCountdownRef.current) { clearInterval(retryCountdownRef.current); retryCountdownRef.current = null; }
+          setIsRetrying(false);
+          setRetryCountdown(0);
+          setErrorMsg(null);
         }}
         onCanPlay={() => {
           setIsLoadingVideo(false);
@@ -904,51 +1098,97 @@ export default function MediaPlayer({
           setIsBuffering(false);
           if (videoRef.current) triggerSaveProgress(videoRef.current.currentTime, videoRef.current.duration);
         }}
-        onError={() => {
+        onError={(e) => {
           setIsLoadingVideo(false);
           setIsBuffering(false);
-          setErrorMsg('Reconectando señal de transmisión...');
+          const mediaErr = e.target?.error;
+          const errMsg = mediaErr ? `Código ${mediaErr.code}: ${mediaErr.message || 'Error de decodificación'}` : 'Reconectando señal de transmisión...';
+          setErrorMsg(errMsg);
+
+          // Auto-retry every 5s (up to 5 times)
+          if (autoRetryTimerRef.current) return;
+          let countdown = 5;
+          setRetryCountdown(countdown);
+          setIsRetrying(true);
+          retryCountdownRef.current = setInterval(() => {
+            countdown -= 1;
+            setRetryCountdown(countdown);
+            if (countdown <= 0) {
+              clearInterval(retryCountdownRef.current);
+              retryCountdownRef.current = null;
+            }
+          }, 1000);
+          autoRetryTimerRef.current = setTimeout(() => {
+            autoRetryTimerRef.current = null;
+            setIsRetrying(false);
+            setRetryCountdown(0);
+            setErrorMsg(null);
+            setRetryCount(prev => prev + 1);
+            if (triggerSilentReloadRef.current) {
+              triggerSilentReloadRef.current();
+            }
+          }, 5000);
         }}
         className={`w-full h-full object-contain ${showControls || showAudioSubMenu ? 'subtitles-up' : ''}`}
         autoPlay
         playsInline
       >
-        {proxySubtitleTracks.map((track, trackIdx) => (
-          <track
-            key={track.id}
-            kind="subtitles"
-            src={`/api_subtitles?id=${itemData.id}&type=${itemData.type}&action=vtt&track=${track.id}&ext=${itemData.container_extension || 'mkv'}`}
-            srcLang={track.lang}
-            label={track.name}
-            onLoad={(e) => {
-              // When the VTT loads, re-apply showing mode if this track is selected
-              const nativeId = `native-${trackIdx}`;
-              if (selectedSubtitleTrack === nativeId && e.target.track) {
-                e.target.track.mode = 'showing';
-              }
-            }}
-          />
-        ))}
+        {/* No native <track> elements — we use custom JS subtitle renderer instead */}
       </video>
+
+      {/* ─── Custom Subtitle Overlay ─── */}
+      {isLoadingSubtitles && (
+        <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none z-20">
+          <div className="flex items-center gap-2 bg-black/70 text-white/70 px-3 py-1.5 rounded-full text-[11px] font-medium">
+            <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            Cargando subtítulos...
+          </div>
+        </div>
+      )}
+      {currentSubtitleText && !isLoadingSubtitles && (
+        <div
+          className={`absolute left-0 right-0 flex justify-center pointer-events-none z-20 transition-all duration-300 ${
+            showControls || showAudioSubMenu ? 'bottom-32' : 'bottom-8'
+          }`}
+        >
+          <div className="max-w-2xl mx-4 text-center">
+            <p
+              className="inline-block bg-black/85 text-white px-4 py-2 rounded-lg text-base font-medium leading-snug whitespace-pre-line shadow-lg"
+              style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)', fontSize: 'clamp(14px, 2vw, 20px)' }}
+            >
+              {currentSubtitleText}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* On-Screen Seek Ripple Animation Overlay (Centered in Screen) */}
       {seekFeedback && (
         <div className="absolute inset-0 pointer-events-none z-35 flex items-center justify-around px-8 sm:px-24 overflow-hidden">
-          {seekFeedback.type === 'rewind' ? (
+          {seekFeedback.type === 'rewind' && (
             <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/80 border border-red-600/60 text-white font-bold px-8 py-6 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
               <Rewind10Icon className="w-12 h-12 text-red-500 animate-pulse" />
               <span className="text-sm font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
             </div>
-          ) : <div />}
+          )}
 
-          {seekFeedback.type === 'forward' ? (
+          {seekFeedback.type === 'forward' && (
             <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/80 border border-red-600/60 text-white font-bold px-8 py-6 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
               <Forward10Icon className="w-12 h-12 text-red-500 animate-pulse" />
               <span className="text-sm font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
             </div>
-          ) : <div />}
+          )}
+
+          {seekFeedback.type === 'clipboard-copy' && (
+            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/85 border border-green-500/60 text-white font-bold px-8 py-5 rounded-3xl backdrop-blur-md shadow-2xl shadow-green-950/20 animate-fadeIn scale-110 select-none">
+              <Check className="w-10 h-10 text-green-500 animate-bounce" />
+              <span className="text-sm font-bold tracking-wide text-green-400">{seekFeedback.label}</span>
+            </div>
+          )}
         </div>
       )}
+
+
 
       {/* Video Loading Animation Overlay */}
       {isLoadingVideo && !errorMsg && (
@@ -1027,29 +1267,57 @@ export default function MediaPlayer({
 
       {/* Non-Blocking Floating Error / Reconnect Toast Banner */}
       {errorMsg && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-neutral-900/95 border border-red-800/80 rounded-2xl px-5 py-3 flex items-center gap-3 shadow-2xl shadow-black animate-fadeIn select-none max-w-md">
-          <AlertTriangle className="w-5 h-5 text-red-500 animate-pulse flex-shrink-0" />
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-xs font-bold text-white leading-tight">Interrupción Temporal</p>
-            <p className="text-[11px] text-neutral-400 truncate">{errorMsg}</p>
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-neutral-900/95 border border-red-800/80 rounded-2xl px-5 py-4 flex flex-col gap-3 shadow-2xl shadow-black animate-fadeIn select-none max-w-sm w-full mx-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-500 animate-pulse flex-shrink-0" />
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-xs font-bold text-white leading-tight">Interrupción Temporal</p>
+              <p className="text-[11px] text-neutral-400 truncate">Reconectando señal de transmisión...</p>
+            </div>
+            <button
+              data-dpad-id="player-toast-dismiss"
+              onClick={() => {
+                setErrorMsg(null);
+                setIsRetrying(false);
+                if (autoRetryTimerRef.current) { clearTimeout(autoRetryTimerRef.current); autoRetryTimerRef.current = null; }
+                if (retryCountdownRef.current) { clearInterval(retryCountdownRef.current); retryCountdownRef.current = null; }
+              }}
+              className="dpad-focusable p-1 text-neutral-400 hover:text-white transition cursor-pointer flex-shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            data-dpad-id="player-toast-retry"
-            onClick={handleManualRetry}
-            className="dpad-focusable px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer flex-shrink-0"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reintentar</span>
-          </button>
-          <button
-            data-dpad-id="player-toast-dismiss"
-            onClick={() => setErrorMsg(null)}
-            className="dpad-focusable p-1 text-neutral-400 hover:text-white transition cursor-pointer flex-shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
+
+          {/* Auto-retry progress bar */}
+          {isRetrying ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[10px] text-neutral-400">
+                <span className="flex items-center gap-1.5">
+                  <RefreshCw className="w-3 h-3 animate-spin text-red-500" />
+                  Reintentando automáticamente...
+                </span>
+                <span className="text-red-400 font-bold">{retryCountdown}s</span>
+              </div>
+              <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-red-600 rounded-full transition-all duration-1000 ease-linear"
+                  style={{ width: `${(retryCountdown / 5) * 100}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <button
+              data-dpad-id="player-toast-retry"
+              onClick={handleManualRetry}
+              className="dpad-focusable w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Reintentar Ahora</span>
+            </button>
+          )}
         </div>
       )}
+
 
       {/* Audio & Subtitles Menu Modal Overlay */}
       {showAudioSubMenu && (
@@ -1142,17 +1410,17 @@ export default function MediaPlayer({
                   ) : (
                     subtitleTracks.map((track, idx) => (
                       <button
-                        key={idx}
+                        key={track.id ?? idx}
                         data-dpad-id={`player-sub-track-${idx}`}
-                        onClick={() => handleSelectSubtitleTrack(idx)}
+                        onClick={() => handleSelectSubtitleTrack(track.id)}
                         className={`dpad-focusable w-full px-4 py-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition cursor-pointer ${
-                          selectedSubtitleTrack === idx
+                          selectedSubtitleTrack === track.id
                             ? 'bg-red-950/80 border-red-600 text-white'
                             : 'bg-neutral-900/80 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700'
                         }`}
                       >
                         <span>{track.name || track.lang || `Subtítulo ${idx + 1}`}</span>
-                        {selectedSubtitleTrack === idx && <Check className="w-4 h-4 text-red-500" />}
+                        {selectedSubtitleTrack === track.id && <Check className="w-4 h-4 text-red-500" />}
                       </button>
                     ))
                   )}

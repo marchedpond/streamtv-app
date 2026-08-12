@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Tv, Film, Clapperboard, Clock, ShieldCheck, User } from 'lucide-react';
+import { Tv, Film, Clapperboard, Clock, ShieldCheck, User, Shield, LogOut } from 'lucide-react';
 
-export default function Header({ accountInfo, activeTab, setActiveTab }) {
+export default function Header({ accountInfo, activeTab, setActiveTab, user, onLogout }) {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -17,6 +17,10 @@ export default function Header({ accountInfo, activeTab, setActiveTab }) {
     { id: 'series', label: 'Series', icon: Clapperboard },
   ];
 
+  if (user?.role === 'admin') {
+    navItems.push({ id: 'admin', label: 'Panel Admin', icon: Shield });
+  }
+
   return (
     <header className="h-14 sm:h-16 px-3 sm:px-6 glass-panel flex items-center justify-between z-40 relative border-b border-neutral-800 select-none">
       {/* Brand Logo */}
@@ -26,9 +30,6 @@ export default function Header({ accountInfo, activeTab, setActiveTab }) {
         </div>
         <h1 className="text-base sm:text-xl font-extrabold tracking-wider text-white flex items-center gap-1.5">
           Stream<span className="text-red-600">TV</span>
-          <span className="hidden sm:inline-block text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-red-950/80 text-red-400 border border-red-800/40">
-            Xtream
-          </span>
         </h1>
       </div>
 
@@ -49,25 +50,33 @@ export default function Header({ accountInfo, activeTab, setActiveTab }) {
               }`}
             >
               <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isActive ? 'text-white' : 'text-neutral-400'}`} />
-              <span className="whitespace-nowrap">{item.label}</span>
+              <span className="hidden xs:inline-block whitespace-nowrap">{item.label}</span>
             </button>
           );
         })}
       </nav>
 
       {/* System Status (Hidden on mobile) */}
-      <div className="hidden lg:flex items-center gap-3 text-xs">
-        <div className="flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl">
+      <div className="flex items-center gap-2 sm:gap-3 text-xs">
+        <div className="hidden lg:flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl">
           <User className="w-3.5 h-3.5 text-red-500" />
-          <span className="font-semibold text-neutral-200">
-            Cliente StreamTV
+          <span className="font-semibold text-neutral-200 truncate max-w-[120px]">
+            {user?.email || 'Usuario'}
           </span>
           <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> Activo
+            <ShieldCheck className="w-3 h-3" /> {user?.role === 'admin' ? 'Admin' : 'Beta'}
           </span>
         </div>
 
-        <div className="flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl font-mono text-xs text-neutral-300">
+        <button
+          onClick={onLogout}
+          className="md:hidden p-2 rounded-xl bg-neutral-900 hover:bg-red-950/20 text-neutral-400 hover:text-red-500 border border-neutral-800 transition cursor-pointer"
+          title="Cerrar Sesión"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
+
+        <div className="hidden sm:flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl font-mono text-xs text-neutral-300">
           <Clock className="w-3.5 h-3.5 text-neutral-400" />
           <span>{formattedTime}</span>
         </div>

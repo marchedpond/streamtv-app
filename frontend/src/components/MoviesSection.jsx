@@ -304,6 +304,7 @@ export default function MoviesSection({ onPlayStream }) {
                   data-dpad-id="vod-modal-play-btn"
                   onClick={() => {
                     const playUrl = getMovieStreamUrl(selectedMovie.stream_id, selectedMovie.container_extension);
+                    const audioCodec = movieDetail?.info?.audio?.codec_name || movieDetail?.audio?.codec_name;
                     onPlayStream({
                       id: selectedMovie.stream_id,
                       type: 'vod',
@@ -311,6 +312,8 @@ export default function MoviesSection({ onPlayStream }) {
                       subtitle: 'Película HD',
                       poster: selectedMovie.stream_icon,
                       url: playUrl,
+                      audioCodec: audioCodec,
+                      container_extension: selectedMovie.container_extension
                     });
                     setSelectedMovie(null);
                   }}

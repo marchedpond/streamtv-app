@@ -51,13 +51,27 @@ const saveLocalHistory = (item) => {
  */
 export const fetchWatchHistory = async () => {
   const localItems = getLocalHistory();
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const token = localStorage.getItem('streamtv_token');
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    const res = await fetch('/api/history', { signal: controller.signal });
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${backendUrl}/api/history`, { 
+      headers,
+      signal: controller.signal 
+    });
     clearTimeout(timeoutId);
+
+    if (res.status === 403) {
+      window.dispatchEvent(new Event('auth-expired'));
+    }
 
     const contentType = res.headers.get('content-type');
     if (res.ok && contentType && contentType.includes('application/json')) {
@@ -103,13 +117,21 @@ export const saveWatchProgress = async (itemData) => {
 
   saveLocalHistory(payload);
 
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const token = localStorage.getItem('streamtv_token');
+
   try {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 6000);
 
-    await fetch('/api/history', {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    await fetch(`${backendUrl}/api/history`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });

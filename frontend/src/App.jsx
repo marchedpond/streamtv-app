@@ -6,15 +6,19 @@ import MoviesSection from './components/MoviesSection';
 import SeriesSection from './components/SeriesSection';
 import MediaPlayer from './components/MediaPlayer';
 import ContinueWatching from './components/ContinueWatching';
+import Login from './components/Login';
+import Register from './components/Register';
+import AdminPanel from './components/AdminPanel';
 import { useDPadNavigation } from './hooks/useDPadNavigation';
 import { authenticateAccount, getLiveStreamUrl } from './services/xtream';
 import { fetchWatchHistory, saveWatchProgress } from './services/history';
 import { Radio, RefreshCw, AlertCircle, Play, RotateCcw, X } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'movies' | 'series'
-  const [accountInfo, setAccountInfo] = useState(null);
-  const [authStatus, setAuthStatus] = useState('loading'); // 'loading' | 'success' | 'error'
+  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'movies' | 'series' | 'admin'
+  const [authStatus, setAuthStatus] = useState('loading'); // 'loading' | 'success' | 'unauthenticated' | 'error'
+  const [authView, setAuthView] = useState('login'); // 'login' | 'register'
+  const [currentUser, setCurrentUser] = useState(null);
 
   // Active Video Stream State for MediaPlayer
   const [activeStream, setActiveStream] = useState(null);
@@ -48,26 +52,54 @@ export default function App() {
     },
   });
 
-  // Auto Authenticate on App Mount
+  // Verify stored token on app load
   const initAuth = async () => {
+    const token = localStorage.getItem('streamtv_token');
+    if (!token) {
+      setAuthStatus('unauthenticated');
+      return;
+    }
+
     setAuthStatus('loading');
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+
     try {
-      const data = await authenticateAccount();
-      if (data && (data.user_info || data.userInfo)) {
-        setAccountInfo(data);
+      const res = await fetch(`${backendUrl}/api/auth/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCurrentUser(data.user);
         setAuthStatus('success');
         loadHistory();
+      } else if (res.status === 403) {
+        setAuthStatus('expired');
       } else {
-        setAuthStatus('error');
+        localStorage.removeItem('streamtv_token');
+        setAuthStatus('unauthenticated');
       }
     } catch (err) {
-      setAuthStatus('error');
+      setAuthStatus('unauthenticated');
     }
   };
 
   useEffect(() => {
     initAuth();
   }, []);
+
+  const handleLoginSuccess = (token, user) => {
+    localStorage.setItem('streamtv_token', token);
+    setCurrentUser(user);
+    setAuthStatus('success');
+    loadHistory();
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('streamtv_token');
+    setCurrentUser(null);
+    setAuthStatus('unauthenticated');
+    setActiveTab('live');
+  };
 
   // Default Focus on Header navigation after load & refresh history on tab change
   useEffect(() => {
@@ -183,6 +215,47 @@ export default function App() {
         </div>
       )}
 
+      {/* Auth Unauthenticated Screens */}
+      {authStatus === 'unauthenticated' && (
+        <>
+          {authView === 'login' ? (
+            <Login
+              onLoginSuccess={handleLoginSuccess}
+              onGoToRegister={() => setAuthView('register')}
+            />
+          ) : (
+            <Register
+              onRegisterSuccess={handleLoginSuccess}
+              onGoToLogin={() => setAuthView('login')}
+            />
+          )}
+        </>
+      )}
+
+      {/* Auth Expired Screen */}
+      {authStatus === 'expired' && (
+        <div className="flex-1 flex flex-col items-center justify-center space-y-6 p-6 text-center bg-[#0A0A0A]">
+          <div className="w-16 h-16 rounded-2xl bg-amber-950/40 border border-amber-800/40 flex items-center justify-center text-amber-500 shadow-xl shadow-amber-950/20 animate-pulse">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-3 max-w-md">
+            <h2 className="text-2xl font-extrabold text-white tracking-wide">Acceso Vencido</h2>
+            <p className="text-sm text-neutral-400 leading-relaxed">
+              Tu período de acceso beta o tu suscripción de StreamTV ha caducado. 
+              Por favor ponte en contacto con tu administrador familiar para renovar tu tiempo de acceso.
+            </p>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="px-8 py-3.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 font-bold rounded-2xl text-xs transition cursor-pointer"
+          >
+            Cerrar Sesión / Cambiar Cuenta
+          </button>
+        </div>
+      )}
+
       {/* Auth Error Screen */}
       {authStatus === 'error' && (
         <div className="flex-1 flex flex-col items-center justify-center space-y-6 p-6 text-center bg-neutral-950">
@@ -214,9 +287,11 @@ export default function App() {
         <>
           {/* Header Bar */}
           <Header
-            accountInfo={accountInfo}
+            accountInfo={null}
             activeTab={activeTab}
             setActiveTab={setActiveTab}
+            user={currentUser}
+            onLogout={handleLogout}
           />
 
           {/* Main Layout (Sidebar + Content View) */}
@@ -226,27 +301,31 @@ export default function App() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               onRefresh={initAuth}
+              user={currentUser}
+              onLogout={handleLogout}
             />
 
             {/* Main Content Area */}
             <main className="flex-1 h-full overflow-y-auto flex flex-col scrollbar-thin">
               {/* Continue Watching Section (Filtered by activeTab) */}
-              <ContinueWatching
-                historyItems={historyItems}
-                activeTab={activeTab}
-                onResume={(item) =>
-                  setPendingResumeStream({
-                    id: item.item_id,
-                    type: item.item_type,
-                    title: item.title,
-                    subtitle: item.subtitle,
-                    poster: item.poster,
-                    url: item.stream_url,
-                    savedProgress: item.progress_seconds,
-                    duration: item.duration_seconds,
-                  })
-                }
-              />
+              {activeTab !== 'admin' && (
+                <ContinueWatching
+                  historyItems={historyItems}
+                  activeTab={activeTab}
+                  onResume={(item) =>
+                    setPendingResumeStream({
+                      id: item.item_id,
+                      type: item.item_type,
+                      title: item.title,
+                      subtitle: item.subtitle,
+                      poster: item.poster,
+                      url: item.stream_url,
+                      savedProgress: item.progress_seconds,
+                      duration: item.duration_seconds,
+                    })
+                  }
+                />
+              )}
 
               {/* Sections */}
               <div className="flex-1 flex flex-col">
@@ -258,6 +337,9 @@ export default function App() {
                 )}
                 {activeTab === 'series' && (
                   <SeriesSection onPlayStream={handlePlayRequest} />
+                )}
+                {activeTab === 'admin' && (
+                  <AdminPanel />
                 )}
               </div>
             </main>

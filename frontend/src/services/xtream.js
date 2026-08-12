@@ -12,8 +12,9 @@ export const getCredentials = () => {
 };
 
 const getApiEndpoint = () => {
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
   return {
-    url: '/api_proxy',
+    url: `${backendUrl}/api_proxy`,
   };
 };
 
@@ -31,9 +32,22 @@ const fetchJson = async (action = '', extraParams = '', timeoutMs = 25000) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  const token = localStorage.getItem('streamtv_token');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   try {
-    const response = await fetch(fullUrl, { signal: controller.signal });
+    const response = await fetch(fullUrl, { 
+      headers,
+      signal: controller.signal 
+    });
     clearTimeout(timer);
+
+    if (response.status === 403) {
+      window.dispatchEvent(new Event('auth-expired'));
+    }
 
     if (!response.ok) {
       throw new Error('Servicio no disponible temporalmente.');
@@ -105,7 +119,9 @@ export const getAllLiveStreams = async (categories = []) => {
 };
 
 export const getLiveStreamUrl = (streamId) => {
-  return `/api_stream/live/${streamId}.m3u8`;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const token = localStorage.getItem('streamtv_token') || '';
+  return `${backendUrl}/api_stream/live/${streamId}.m3u8?token=${token}`;
 };
 
 /**
@@ -148,7 +164,9 @@ export const getVodInfo = async (vodId) => {
 
 export const getMovieStreamUrl = (streamId, containerExtension = 'mp4') => {
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  return `/api_stream/movie/${streamId}.${ext}`;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const token = localStorage.getItem('streamtv_token') || '';
+  return `${backendUrl}/api_stream/movie/${streamId}.${ext}?token=${token}`;
 };
 
 /**
@@ -191,5 +209,7 @@ export const getSeriesInfo = async (seriesId) => {
 
 export const getEpisodeStreamUrl = (streamId, containerExtension = 'mp4') => {
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  return `/api_stream/series/${streamId}.${ext}`;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const token = localStorage.getItem('streamtv_token') || '';
+  return `${backendUrl}/api_stream/series/${streamId}.${ext}?token=${token}`;
 };
