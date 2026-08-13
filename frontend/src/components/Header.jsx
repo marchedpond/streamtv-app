@@ -22,11 +22,11 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
   }
 
   return (
-    <header className="h-16 sm:h-18 pt-[env(safe-area-inset-top,0px)] px-3.5 sm:px-6 glass-panel flex items-center justify-between z-40 relative border-b border-neutral-800 select-none">
-      {/* Brand Capsule Pill (Seamless Transparent TV+S Logo Icon + HTML StreamTV Text) */}
-      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-neutral-900/90 border border-neutral-800/90 shadow-md flex-shrink-0">
-        <img src="/logo_icon_transparent.png" alt="StreamTV Logo" className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-        <h1 className="text-sm sm:text-lg font-extrabold tracking-wider text-white flex items-center gap-1 leading-none">
+    <header className="min-h-[76px] sm:h-18 pt-[max(14px,env(safe-area-inset-top,0px))] pb-2 px-3.5 sm:px-6 glass-panel flex items-center justify-between z-40 relative border-b border-neutral-800 select-none">
+      {/* Brand Capsule Pill (Stacked Logo Icon on Top + Text Below on Mobile, Horizontal on Desktop) */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-2xl bg-neutral-900/90 border border-neutral-800/90 shadow-md flex-shrink-0">
+        <img src="/logo_icon_transparent.png" alt="StreamTV Logo" className="w-6 h-6 sm:w-8 sm:h-8 object-contain drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+        <h1 className="text-[11px] sm:text-lg font-extrabold tracking-wider text-white flex items-center gap-1 leading-none text-center">
           Stream<span className="text-red-600 font-black">TV</span>
         </h1>
       </div>
