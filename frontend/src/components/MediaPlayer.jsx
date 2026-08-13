@@ -1704,26 +1704,8 @@ export default function MediaPlayer({
               </button>
             </div>
 
-            {/* Right: Audio & Subtitles + PiP + Fullscreen (Stacked Vertically on Mobile, Horizontal on Desktop) */}
+            {/* Right: Audio & Subtitles + PiP + Fullscreen */}
             <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-2.5 order-3">
-              <button
-                data-dpad-id="player-btn-fullscreen"
-                onClick={toggleFullscreen}
-                className="dpad-focusable p-2 sm:p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
-                title="Pantalla Completa"
-              >
-                <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-
-              <button
-                data-dpad-id="player-btn-pip"
-                onClick={togglePictureInPicture}
-                className="dpad-focusable p-2 sm:p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
-                title="Ventana Flotante / Picture-in-Picture (Segundo Plano)"
-              >
-                <PictureInPicture className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-
               <button
                 data-dpad-id="player-btn-audiosub"
                 onClick={() => { syncTracks(); setShowAudioSubMenu(true); }}
@@ -1736,6 +1718,24 @@ export default function MediaPlayer({
               >
                 <Languages className="w-4 h-4 text-red-500" />
                 <span className="hidden sm:inline">Audio y Subtítulos</span>
+              </button>
+
+              <button
+                data-dpad-id="player-btn-pip"
+                onClick={togglePictureInPicture}
+                className="dpad-focusable p-2 sm:p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
+                title="Ventana Flotante / Picture-in-Picture (Segundo Plano)"
+              >
+                <PictureInPicture className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+
+              <button
+                data-dpad-id="player-btn-fullscreen"
+                onClick={toggleFullscreen}
+                className="dpad-focusable p-2 sm:p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
+                title="Pantalla Completa"
+              >
+                <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
           </div>
