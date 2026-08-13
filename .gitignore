@@ -36,3 +36,28 @@ Thumbs.db
 
 # Temporary test scripts
 test_*.js
+
+# Mobile Apps (Android, iOS, Nintendo Switch Horizon)
+# Android Build & IDE Outputs
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/local.properties
+mobile/android/.idea/
+mobile/android/*.iml
+mobile/android/app/*.iml
+
+# iOS Build & IDE Outputs
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+mobile/ios/*.xcodeproj/xcuserdata/
+mobile/ios/DerivedData/
+mobile/ios/*.xcworkspace/xcuserdata/
+
+# Nintendo Switch (Horizon OS) Build Outputs
+mobile/horizon/build/
+mobile/horizon/*.elf
+mobile/horizon/*.nro
+mobile/horizon/*.nacp
+mobile/horizon/*.deps
