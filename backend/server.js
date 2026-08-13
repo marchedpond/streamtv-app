@@ -907,6 +907,7 @@ app.get('/api_stream/:type/:file', authenticateToken, async (req, res) => {
           '-map', '0:v:0',
           '-map', '0:a:0?',
           '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+          '-min_frag_duration', '2000000', // Enforce tight 2-second fragment size for instant HTTP delivery
           ...(videoNeedsTranscode ? ['-preset', 'fast', '-crf', '23'] : [])
         ]);
 

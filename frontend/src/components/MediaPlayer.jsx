@@ -725,15 +725,15 @@ export default function MediaPlayer({
 
     setupNativeTrackListeners(video);
 
-    // Optimized HLS Config for high resilience on throttled/corporate firewalls
+    // Optimized HLS Config for high resilience on throttled/corporate firewalls & mobile memory protection
     const hlsConfig = {
       enableWorker: true,
       lowLatencyMode: false, // Prioritize robust buffer size over sub-second latency
-      backBufferLength: 90,
-      maxBufferLength: 60,   // Store up to 60 seconds of video fragments
-      maxMaxBufferLength: 120, // Absolute max buffer limit
-      maxBufferSize: 120 * 1024 * 1024, // Up to 120MB buffer space (default 60MB)
-      maxBufferHole: 2.0,    // Jump over up to 2s gaps instead of stalling or dropping frames
+      backBufferLength: 45,
+      maxBufferLength: 45,   // Store up to 45 seconds of video fragments
+      maxMaxBufferLength: 60, // Absolute max buffer limit
+      maxBufferSize: 45 * 1024 * 1024, // Up to 45MB buffer space for mobile efficiency
+      maxBufferHole: 1.0,    // Jump over up to 1s gaps instead of stalling
       maxAudioFramesDrift: 3.0, // Tolerates timestamp drift to fix stuttering audio
 
       // Live TV buffer settings to prevent playing too close to empty edge
@@ -743,13 +743,13 @@ export default function MediaPlayer({
       nudgeDelay: 0.2,       // Slow down nudging to let decoder stabilize
 
       // Frag / Manifest Timeouts & Retry Delays
-      fragLoadingTimeOut: 15000,
+      fragLoadingTimeOut: 20000,
       fragLoadingMaxRetry: 8,
       fragLoadingRetryDelay: 1000,
-      manifestLoadingTimeOut: 15000,
+      manifestLoadingTimeOut: 20000,
       manifestLoadingMaxRetry: 8,
       manifestLoadingRetryDelay: 1000,
-      levelLoadingTimeOut: 15000,
+      levelLoadingTimeOut: 20000,
       levelLoadingMaxRetry: 8,
       levelLoadingRetryDelay: 1000,
 
@@ -904,6 +904,19 @@ export default function MediaPlayer({
       hls.loadSource(effectiveStreamUrl);
       hls.attachMedia(video);
       setupHlsEvents(hls);
+    } else if (isHlsStream && video.canPlayType && video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native iOS Safari / iPadOS AVPlayer HLS support
+      video.src = effectiveStreamUrl;
+      video.addEventListener('loadedmetadata', seekToInitial, { once: true });
+      video.play()
+        .then(() => {
+          setIsLoadingVideo(false);
+          setIsBuffering(false);
+        })
+        .catch(() => {
+          setIsPlaying(false);
+          setIsLoadingVideo(false);
+        });
     } else {
       video.src = effectiveStreamUrl;
       video.addEventListener('loadedmetadata', seekToInitial, { once: true });
@@ -1249,6 +1262,8 @@ export default function MediaPlayer({
         className={`w-full h-full object-contain ${showControls || showAudioSubMenu ? 'subtitles-up' : ''}`}
         autoPlay
         playsInline
+        webkit-playsinline="true"
+        preload="auto"
       >
         {/* No native <track> elements — we use custom JS subtitle renderer instead */}
       </video>
