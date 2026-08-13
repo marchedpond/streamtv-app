@@ -4,6 +4,8 @@
  * Completely hides credentials (username, password, server URLs) from client browser & eliminates Mixed Content blocking.
  */
 
+import { getBackendUrl } from '../config';
+
 export const getCredentials = () => {
   return {
     server: 'Servidor IPTV',
@@ -12,7 +14,7 @@ export const getCredentials = () => {
 };
 
 const getApiEndpoint = () => {
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const backendUrl = getBackendUrl();
   return {
     url: `${backendUrl}/api_proxy`,
   };
@@ -119,7 +121,7 @@ export const getAllLiveStreams = async (categories = []) => {
 };
 
 export const getLiveStreamUrl = (streamId) => {
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const backendUrl = getBackendUrl();
   const token = localStorage.getItem('streamtv_token') || '';
   return `${backendUrl}/api_stream/live/${streamId}.m3u8?token=${token}`;
 };
@@ -164,7 +166,7 @@ export const getVodInfo = async (vodId) => {
 
 export const getMovieStreamUrl = (streamId, containerExtension = 'mp4') => {
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const backendUrl = getBackendUrl();
   const token = localStorage.getItem('streamtv_token') || '';
   return `${backendUrl}/api_stream/movie/${streamId}.${ext}?token=${token}`;
 };
@@ -209,7 +211,7 @@ export const getSeriesInfo = async (seriesId) => {
 
 export const getEpisodeStreamUrl = (streamId, containerExtension = 'mp4') => {
   const ext = containerExtension ? containerExtension.replace(/^\./, '') : 'mp4';
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const backendUrl = getBackendUrl();
   const token = localStorage.getItem('streamtv_token') || '';
   return `${backendUrl}/api_stream/series/${streamId}.${ext}?token=${token}`;
 };

@@ -1,4 +1,5 @@
 import express from 'express';
+import { spawn } from 'child_process';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
@@ -135,6 +136,13 @@ const authenticateToken = (req, res, next) => {
   jwt.verify(token, JWT_SECRET, async (err, tokenUser) => {
     if (err) return res.status(403).json({ error: 'Token inválido o expirado' });
 
+    // For media streaming endpoints (/api_stream, /api_hlsr, /api_subtitles),
+    // valid signed JWT is sufficient to prevent DB latency or 403 stalls during playback
+    if (req.path.startsWith('/api_stream') || req.path.startsWith('/api_hlsr') || req.path.startsWith('/api_subtitles')) {
+      req.user = tokenUser;
+      return next();
+    }
+
     try {
       const sql = getSql();
       const users = await sql`SELECT * FROM users WHERE id = ${tokenUser.id} LIMIT 1;`;
@@ -153,7 +161,8 @@ const authenticateToken = (req, res, next) => {
       req.user = user;
       next();
     } catch (e) {
-      return res.status(500).json({ error: 'Error de servidor al validar usuario' });
+      req.user = tokenUser;
+      next();
     }
   });
 };
@@ -659,10 +668,87 @@ app.get('/api_hlsr', authenticateToken, async (req, res) => {
   }
 });
 
+const subtitleVttCache = new Map();
+
+async function getOrExtractVTT(pathType, id, ext, trackIdx, startTimeSec = 0) {
+  const cacheKey = `${pathType}_${id}_${trackIdx}_${startTimeSec}`;
+  if (subtitleVttCache.has(cacheKey)) {
+    return await subtitleVttCache.get(cacheKey);
+  }
+
+  const promise = (async () => {
+    try {
+      let upstreamRes = await executeIPTVRequest((server) => ({
+        path: `${pathType}/${server.username}/${server.password}/${id}.${ext}`,
+        skipAuth: true
+      }));
+
+      if (!upstreamRes.upstream.ok && ext !== 'mkv') {
+        upstreamRes = await executeIPTVRequest((server) => ({
+          path: `${pathType}/${server.username}/${server.password}/${id}.mkv`,
+          skipAuth: true
+        }));
+      }
+
+      const { targetUrl } = upstreamRes;
+      const ffmpegPath = ffmpegInstaller.path;
+
+      const ffmpegArgs = [
+        '-hide_banner',
+        '-loglevel', 'error'
+      ];
+
+      if (startTimeSec > 0) {
+        ffmpegArgs.push('-ss', String(startTimeSec));
+      }
+
+      ffmpegArgs.push(
+        '-i', targetUrl,
+        '-vn',
+        '-an',
+        '-map', `0:s:${trackIdx}?`,
+        '-c:s', 'webvtt',
+        '-f', 'webvtt',
+        '-'
+      );
+
+      let vttData = 'WEBVTT\n\n';
+      const ffmpegProc = spawn(ffmpegPath, ffmpegArgs);
+
+      ffmpegProc.stdout.on('data', (chunk) => {
+        vttData += chunk.toString('utf8');
+      });
+
+      // 90s timeout for full 0-start extraction, 25s timeout for specific seek time
+      const timeoutMs = startTimeSec > 0 ? 25000 : 90000;
+
+      await new Promise((resolve) => {
+        const killTimeout = setTimeout(() => {
+          try { ffmpegProc.kill('SIGKILL'); } catch (_) {}
+          resolve();
+        }, timeoutMs);
+
+        ffmpegProc.on('close', () => {
+          clearTimeout(killTimeout);
+          resolve();
+        });
+      });
+
+      return vttData;
+    } catch (e) {
+      return 'WEBVTT\n\n';
+    }
+  })();
+
+  subtitleVttCache.set(cacheKey, promise);
+  return await promise;
+}
+
 // Subtitles Extractor Proxy
 app.get('/api_subtitles', authenticateToken, async (req, res) => {
-  const { id, type, action, track, ext = 'mkv' } = req.query;
+  const { id, type, action, track, ext = 'mkv', startTime = '0' } = req.query;
   const pathType = (type === 'vod' || type === 'movie') ? 'movie' : 'series';
+  const startTimeSec = Math.max(0, parseInt(startTime || '0', 10));
 
   if (action === 'tracks') {
     try {
@@ -695,6 +781,13 @@ app.get('/api_subtitles', authenticateToken, async (req, res) => {
 
       const tracks = await tracksPromise;
       res.status(200).json(tracks);
+
+      // Pre-fetch all subtitle tracks in the background asynchronously from start (0s)
+      if (Array.isArray(tracks) && tracks.length > 0) {
+        tracks.forEach((_, idx) => {
+          getOrExtractVTT(pathType, id, ext, idx, 0).catch(() => {});
+        });
+      }
     } catch (e) {
       res.status(200).json([]);
     }
@@ -702,51 +795,16 @@ app.get('/api_subtitles', authenticateToken, async (req, res) => {
   }
 
   if (action === 'vtt') {
-    const trackNum = parseInt(track || '0', 10);
+    const trackIdx = parseInt(track || '0', 10);
     res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
-    res.write('WEBVTT\n\n');
 
     try {
-      const { upstream } = await executeIPTVRequest((server) => ({
-        path: `${pathType}/${server.username}/${server.password}/${id}.${ext}`,
-        headers: { 'Range': 'bytes=0-67108864' },
-        skipAuth: true
-      }));
-
-      if (!upstream.ok) return res.end();
-      const parser = new SubtitleParser();
-
-      const formatVttTime = (ms) => {
-        const date = new Date(ms);
-        const hours = String(Math.floor(ms / 3600000)).padStart(2, '0');
-        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-        const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-        const milliseconds = String(date.getUTCMilliseconds()).padStart(3, '0');
-        return `${hours}:${minutes}:${seconds}.${milliseconds}`;
-      };
-
-      parser.on('subtitle', (subtitle, currentTrackNum) => {
-        if (currentTrackNum === trackNum) {
-          const start = formatVttTime(subtitle.time);
-          const end = formatVttTime(subtitle.time + subtitle.duration);
-          let text = subtitle.text.trim();
-          text = text.replace(/\{[^}]+\}/g, '').replace(/<[^>]+>/g, '');
-          text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-          text = text.replace(/\\[Nn]/g, '\n');
-          res.write(`${start} --> ${end}\n${text}\n\n`);
-        }
-      });
-
-      const reader = upstream.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        parser.write(Buffer.from(value));
-      }
-      res.end();
+      const vttData = await getOrExtractVTT(pathType, id, ext, trackIdx, startTimeSec);
+      res.end(vttData);
     } catch (e) {
-      res.end();
+      res.end('WEBVTT\n\n');
     }
+    return;
   }
 });
 
@@ -790,30 +848,40 @@ app.get('/api_stream/:type/:file', authenticateToken, async (req, res) => {
     let videoNeedsTranscode = false;
     let codecName = '';
     const idMatch = file.match(/^(\d+)\.\w+$/);
+    const isMkv = file.endsWith('.mkv') || file.endsWith('.avi') || file.endsWith('.ts');
     
-    if (idMatch && type === 'movie') {
-      const infoUrl = `${server.url}/player_api.php?username=${encodeURIComponent(server.username)}&password=${encodeURIComponent(server.password)}&action=get_vod_info&vod_id=${idMatch[1]}`;
-      try {
-        const infoRes = await fetch(infoUrl);
-        const infoData = await infoRes.json();
-        const aCodec = (infoData.info?.audio?.codec_name || infoData.audio?.codec_name || '').toLowerCase();
-        const vCodec = (infoData.info?.video?.codec_name || infoData.video?.codec_name || '').toLowerCase();
+    if (idMatch) {
+      if (type === 'movie' || type === 'vod') {
+        const infoUrl = `${server.url}/player_api.php?username=${encodeURIComponent(server.username)}&password=${encodeURIComponent(server.password)}&action=get_vod_info&vod_id=${idMatch[1]}`;
+        try {
+          const infoRes = await fetch(infoUrl);
+          const infoData = await infoRes.json();
+          const aCodec = (infoData.info?.audio?.codec_name || infoData.audio?.codec_name || '').toLowerCase();
+          const vCodec = (infoData.info?.video?.codec_name || infoData.video?.codec_name || '').toLowerCase();
 
-        // Audio: AC3, E-AC3 (Dolby), DTS → not supported by Chrome
-        if (aCodec && (aCodec.includes('ac3') || aCodec.includes('ac-3') || aCodec.includes('dts') || aCodec.includes('eac3') || aCodec.includes('e-ac-3'))) {
-          audioNeedsTranscode = true;
-        }
-        // Video: HEVC / H.265 → not supported by Chrome on most systems
-        if (vCodec && (vCodec.includes('hevc') || vCodec.includes('h265') || vCodec.includes('h.265'))) {
-          videoNeedsTranscode = true;
-        }
+          // Audio: AC3, E-AC3 (Dolby), DTS → not supported by Chrome
+          if (aCodec && (aCodec.includes('ac3') || aCodec.includes('ac-3') || aCodec.includes('dts') || aCodec.includes('eac3') || aCodec.includes('e-ac-3'))) {
+            audioNeedsTranscode = true;
+          }
+          // Video: HEVC / H.265 → not supported by Chrome on most systems
+          if (vCodec && (vCodec.includes('hevc') || vCodec.includes('h265') || vCodec.includes('h.265'))) {
+            videoNeedsTranscode = true;
+          }
 
-        needsTranscoding = audioNeedsTranscode || videoNeedsTranscode;
-        codecName = vCodec || aCodec;
-        console.log(`[Stream] VOD codecs → video:'${vCodec}' audio:'${aCodec}' | transcodeVideo:${videoNeedsTranscode} transcodeAudio:${audioNeedsTranscode}`);
-      } catch (e) {
-        console.error('[Stream] Could not fetch VOD info:', e.message);
+          codecName = vCodec || aCodec;
+        } catch (e) {
+          console.error('[Stream] Could not fetch VOD info:', e.message);
+        }
       }
+
+      // Default audio transcoding for MKV files (almost always contain AC3 audio incompatible with Chrome)
+      if (isMkv && !audioNeedsTranscode && !videoNeedsTranscode) {
+        audioNeedsTranscode = true;
+      }
+
+      needsTranscoding = audioNeedsTranscode || videoNeedsTranscode;
+      codecName = codecName || (isMkv ? 'ac3/mkv' : 'passthrough');
+      console.log(`[Stream] Stream codecs for ${file} (${type}) → transcodeVideo:${videoNeedsTranscode} transcodeAudio:${audioNeedsTranscode}`);
     }
 
     // 2. Transcode incompatible codecs using FFmpeg on-the-fly
@@ -821,22 +889,32 @@ app.get('/api_stream/:type/:file', authenticateToken, async (req, res) => {
       // Cancel the upstream body — FFmpeg will open its own connection
       try { upstream.body?.cancel(); } catch (_) {}
 
-      console.log(`[Transcoding] Starting FFmpeg for '${codecName}' on ${file} (video:${videoNeedsTranscode ? 'libx264' : 'copy'} audio:${audioNeedsTranscode ? 'aac' : 'copy'})`);
+      const startTime = parseFloat(req.query.startTime || req.query.ss || 0);
+      console.log(`[Transcoding] Starting FFmpeg for '${codecName}' on ${file} at t=${startTime}s (video:${videoNeedsTranscode ? 'libx264' : 'copy'} audio:${audioNeedsTranscode ? 'aac' : 'copy'})`);
       res.setHeader('Content-Type', 'video/mp4');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', 'no-cache');
       
-      const command = ffmpeg(targetUrl)
+      const command = ffmpeg(targetUrl);
+      if (startTime > 0) {
+        command.seekInput(startTime);
+      }
+      command
         .videoCodec(videoNeedsTranscode ? 'libx264' : 'copy')
         .audioCodec(audioNeedsTranscode ? 'aac' : 'copy')
-        .audioBitrate(audioNeedsTranscode ? '192k' : undefined)
-        .audioChannels(audioNeedsTranscode ? 2 : undefined)
         .format('mp4')
         .outputOptions([
+          '-map', '0:v:0',
+          '-map', '0:a:0?',
           '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-          '-fflags', '+genpts',
           ...(videoNeedsTranscode ? ['-preset', 'fast', '-crf', '23'] : [])
-        ])
+        ]);
+
+      if (audioNeedsTranscode) {
+        command.audioBitrate('192k').audioChannels(2);
+      }
+
+      command
         .on('start', (cmd) => console.log('[Transcoding] FFmpeg started:', cmd.slice(0, 160)))
         .on('error', (err) => {
           console.error('[Transcoding] FFmpeg error:', err.message);
@@ -847,7 +925,9 @@ app.get('/api_stream/:type/:file', authenticateToken, async (req, res) => {
         });
 
       req.on('close', () => {
-        try { command.kill('SIGKILL'); } catch (_) {}
+        if (!res.writableEnded) {
+          try { command.kill('SIGTERM'); } catch (_) {}
+        }
       });
 
       command.pipe(res, { end: true });

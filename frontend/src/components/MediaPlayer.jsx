@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
+import { getBackendUrl } from '../config';
 import { Play, Pause, Volume2, VolumeX, Maximize, ArrowLeft, Tv, AlertTriangle, RefreshCw, X, Languages, Check, PictureInPicture, SkipBack, SkipForward } from 'lucide-react';
 
 const Rewind10Icon = ({ className = 'w-6 h-6' }) => (
@@ -70,12 +71,26 @@ export default function MediaPlayer({
   const [currentSubtitleText, setCurrentSubtitleText] = useState(null);
   const [isLoadingSubtitles, setIsLoadingSubtitles] = useState(false);
   const activeFetchControllerRef = useRef(null); // AbortController for subtitle fetch
+  const lastSubtitleFetchTimeRef = useRef(0);
+
+  // Movie/Stream Duration and Seeking Offset State
+  const [knownDuration, setKnownDuration] = useState(0);
+  const timeOffsetRef = useRef(0);
+
+  const parseDurationSecs = (dur) => {
+    if (typeof dur === 'number') return dur;
+    if (!dur || typeof dur !== 'string') return 0;
+    const parts = dur.trim().split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return Number(dur) || 0;
+  };
 
   useEffect(() => {
     let active = true;
     setUnsupportedAudioCodec(false);
 
-    // Reset subtitle state when content changes
+    // Reset subtitle & seek state when content changes
     if (activeFetchControllerRef.current) {
       activeFetchControllerRef.current.abort();
       activeFetchControllerRef.current = null;
@@ -84,6 +99,17 @@ export default function MediaPlayer({
     setCurrentSubtitleText(null);
     setIsLoadingSubtitles(false);
     setSelectedSubtitleTrack(-1);
+    timeOffsetRef.current = 0;
+
+    const initialDur = parseDurationSecs(
+      itemData?.duration_secs || itemData?.duration || itemData?.info?.duration_secs || itemData?.info?.duration
+    );
+    if (initialDur > 0) {
+      setKnownDuration(initialDur);
+      setDuration(initialDur);
+    } else {
+      setKnownDuration(0);
+    }
 
     // Check if the current audio codec is AC-3 or DTS and if browser supports it
     const checkSupport = (codecName) => {
@@ -105,7 +131,7 @@ export default function MediaPlayer({
       // checkSupport(itemData.audioCodec);
     }
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+    const backendUrl = getBackendUrl();
     const token = localStorage.getItem('streamtv_token');
     const headers = {};
     if (token) {
@@ -116,6 +142,17 @@ export default function MediaPlayer({
     if (itemData?.type === 'vod') {
       fetch(`${backendUrl}/api_proxy?action=get_vod_info&vod_id=${itemData.id}`, { headers })
         .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (active && data?.info) {
+            const dur = parseDurationSecs(
+              data.info.duration_secs || data.info.duration || data.movie_data?.duration_secs || data.movie_data?.duration
+            );
+            if (dur > 0) {
+              setKnownDuration(dur);
+              setDuration(dur);
+            }
+          }
+        })
         .catch((err) => console.error('Error fetching VOD codec info:', err));
     }
 
@@ -403,19 +440,47 @@ export default function MediaPlayer({
 
   const parseVtt = (vttText) => {
     const cues = [];
-    const blocks = vttText.split(/\n\n+/);
-    for (const block of blocks) {
-      const trimmed = block.trim();
-      if (!trimmed || trimmed.startsWith('WEBVTT') || trimmed.startsWith('NOTE')) continue;
-      const lines = trimmed.split('\n');
-      const arrowLine = lines.findIndex(l => l.includes('-->'));
-      if (arrowLine === -1) continue;
-      const [startStr, endStr] = lines[arrowLine].split('-->').map(s => s.split(' ').find(p => p.includes(':')) || s.trim());
-      const text = lines.slice(arrowLine + 1).join('\n').replace(/\{[^}]+\}/g, '').replace(/<[^>]+>/g, '').trim();
-      if (text) {
-        cues.push({ start: parseVttTime(startStr), end: parseVttTime(endStr), text });
+    if (!vttText) return cues;
+
+    const text = vttText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = text.split('\n');
+
+    let currentCue = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      if (line.includes('-->')) {
+        if (currentCue && currentCue.text) {
+          cues.push(currentCue);
+        }
+        const timeParts = line.split('-->');
+        if (timeParts.length >= 2) {
+          const startStr = timeParts[0].trim().split(' ').pop();
+          const endStr = timeParts[1].trim().split(' ')[0];
+          const start = parseVttTime(startStr);
+          const end = parseVttTime(endStr);
+          currentCue = { start, end: Math.max(end, start + 4.0), text: '' };
+        }
+      } else if (currentCue) {
+        if (line.startsWith('WEBVTT') || line.startsWith('NOTE') || line.startsWith('STYLE') || /^\d+$/.test(line)) {
+          continue;
+        }
+        const cleanText = line
+          .replace(/\{[^}]+\}/g, '')
+          .replace(/<[^>]+>/g, '')
+          .trim();
+
+        if (cleanText) {
+          currentCue.text = currentCue.text ? `${currentCue.text}\n${cleanText}` : cleanText;
+        }
       }
     }
+
+    if (currentCue && currentCue.text) {
+      cues.push(currentCue);
+    }
+
     return cues;
   };
 
@@ -423,26 +488,25 @@ export default function MediaPlayer({
   // Fetch VTT and populate subtitle cues ref
   // -----------------------------------------------------------------------
   const fetchSubtitleVtt = async (trackId) => {
-    // Abort any previous subtitle fetch
-    if (activeFetchControllerRef.current) {
-      activeFetchControllerRef.current.abort();
-      activeFetchControllerRef.current = null;
+    if (trackId === -1) {
+      subtitleCuesRef.current = [];
+      setCurrentSubtitleText(null);
+      return;
     }
-    subtitleCuesRef.current = [];
-    setCurrentSubtitleText(null);
-
-    if (trackId === -1) return;
 
     const idx = parseInt(String(trackId).replace('native-', ''), 10);
     const track = proxySubtitleTracks[idx];
     if (!track) return;
 
-    const trackNum = track.number !== undefined ? track.number : idx;
+    const subStreamIdx = idx;
     const token = localStorage.getItem('streamtv_token') || '';
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+    const backendUrl = getBackendUrl();
     const containerExt = itemData?.container_extension || 'mkv';
-    const url = `${backendUrl}/api_subtitles?id=${itemData.id}&type=${itemData.type}&action=vtt&track=${trackNum}&ext=${containerExt}&token=${encodeURIComponent(token)}`;
+    const url = `${backendUrl}/api_subtitles?id=${itemData.id}&type=${itemData.type}&action=vtt&track=${subStreamIdx}&ext=${containerExt}&token=${encodeURIComponent(token)}`;
 
+    if (activeFetchControllerRef.current) {
+      activeFetchControllerRef.current.abort();
+    }
     const controller = new AbortController();
     activeFetchControllerRef.current = controller;
     setIsLoadingSubtitles(true);
@@ -453,7 +517,7 @@ export default function MediaPlayer({
       const vttText = await res.text();
       const cues = parseVtt(vttText);
       subtitleCuesRef.current = cues;
-      console.log(`[Subtitles] Loaded ${cues.length} cues for track ${trackNum}`);
+      console.log(`[Subtitles] Loaded ${cues.length} cues for track ${subStreamIdx}`);
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('[Subtitles] Failed to load VTT:', err.message);
@@ -886,7 +950,7 @@ export default function MediaPlayer({
 
   const togglePlay = () => {
     if (!videoRef.current) return;
-    if (!videoRef.current.paused) {
+    if (isPlaying) {
       videoRef.current.pause();
       setIsPlaying(false);
       triggerSaveProgress(videoRef.current.currentTime, videoRef.current.duration);
@@ -895,11 +959,57 @@ export default function MediaPlayer({
     }
   };
 
+  const reloadStreamAtTime = (boundedTime) => {
+    if (!videoRef.current) return;
+    timeOffsetRef.current = boundedTime;
+    setIsBuffering(true);
+
+    const backendUrl = getBackendUrl();
+    let targetBase = streamUrl;
+    if (streamUrl.startsWith('/')) {
+      targetBase = `${backendUrl}${streamUrl}`;
+    }
+
+    let baseUrl = targetBase;
+    try {
+      const u = new URL(targetBase, backendUrl);
+      u.searchParams.set('startTime', Math.floor(boundedTime).toString());
+      baseUrl = u.toString();
+    } catch (_) {
+      const sep = targetBase.includes('?') ? '&' : '?';
+      baseUrl = `${targetBase}${sep}startTime=${Math.floor(boundedTime)}`;
+    }
+
+    videoRef.current.src = baseUrl;
+    videoRef.current.play()
+      .then(() => setIsBuffering(false))
+      .catch(() => setIsBuffering(false));
+  };
+
+  const performSeek = (targetTime) => {
+    if (!videoRef.current) return;
+    const dur = knownDuration || duration || 0;
+    const boundedTime = Math.max(0, Math.min(dur > 0 ? dur : targetTime, targetTime));
+
+    const isHlsStream = streamUrl.includes('.m3u8') || streamUrl.includes('/live/');
+
+    if (isHlsStream && hlsRef.current) {
+      videoRef.current.currentTime = boundedTime;
+    } else {
+      // Server-side fast seek via FFmpeg startTime (-ss) for transcoded streams
+      reloadStreamAtTime(boundedTime);
+    }
+
+    setCurrentTime(boundedTime);
+    setProgress(dur ? (boundedTime / dur) * 100 : 0);
+    triggerSaveProgress(boundedTime, dur);
+  };
+
   const seek = (seconds) => {
     if (!videoRef.current) return;
-    const newTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + seconds));
-    videoRef.current.currentTime = newTime;
-    triggerSaveProgress(newTime, videoRef.current.duration);
+    const currentDisplayTime = (videoRef.current.currentTime || 0) + timeOffsetRef.current;
+    const targetTime = Math.max(0, currentDisplayTime + seconds);
+    performSeek(targetTime);
 
     // Trigger Screen Ripple Animation Feedback
     const type = seconds < 0 ? 'rewind' : 'forward';
@@ -914,11 +1024,8 @@ export default function MediaPlayer({
 
   const handleTimelineSeek = (e) => {
     const targetTime = parseFloat(e.target.value);
-    if (!videoRef.current || isNaN(targetTime)) return;
-    videoRef.current.currentTime = targetTime;
-    setCurrentTime(targetTime);
-    setProgress(duration ? (targetTime / duration) * 100 : 0);
-    triggerSaveProgress(targetTime, duration);
+    if (isNaN(targetTime)) return;
+    performSeek(targetTime);
   };
 
   const toggleMute = () => {
@@ -950,25 +1057,35 @@ export default function MediaPlayer({
 
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
-    const curr = videoRef.current.currentTime;
-    const dur = videoRef.current.duration;
+    const vidTime = videoRef.current.currentTime || 0;
+    const displayTime = vidTime + timeOffsetRef.current;
 
-    if (curr > 0 && isLoadingVideo) {
+    let dur = knownDuration;
+    if (!dur || dur <= 0) {
+      const videoDur = videoRef.current.duration;
+      if (videoDur && isFinite(videoDur) && videoDur > 60) {
+        dur = videoDur;
+      }
+    }
+
+    if (vidTime > 0 && isLoadingVideo) {
       setIsLoadingVideo(false);
     }
 
-    setCurrentTime(curr);
+    setCurrentTime(displayTime);
     setDuration(dur || 0);
-    setProgress(dur ? (curr / dur) * 100 : 0);
+    setProgress(dur ? (displayTime / dur) * 100 : 0);
 
-    if (Math.abs(curr - lastSavedTimeRef.current) >= 10) {
-      lastSavedTimeRef.current = curr;
-      triggerSaveProgress(curr, dur);
+    if (Math.abs(displayTime - lastSavedTimeRef.current) >= 10) {
+      lastSavedTimeRef.current = displayTime;
+      triggerSaveProgress(displayTime, dur);
     }
 
     // Update custom subtitle cue
     if (subtitleCuesRef.current.length > 0) {
-      const activeCue = subtitleCuesRef.current.find(c => curr >= c.start && curr < c.end);
+      const activeCue = subtitleCuesRef.current.find(
+        c => (displayTime + 0.3) >= c.start && displayTime < Math.max(c.end, c.start + 4.0)
+      );
       setCurrentSubtitleText(activeCue ? activeCue.text : null);
     } else if (currentSubtitleText !== null) {
       setCurrentSubtitleText(null);
@@ -1138,23 +1255,30 @@ export default function MediaPlayer({
 
       {/* ─── Custom Subtitle Overlay ─── */}
       {isLoadingSubtitles && (
-        <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none z-20">
-          <div className="flex items-center gap-2 bg-black/70 text-white/70 px-3 py-1.5 rounded-full text-[11px] font-medium">
-            <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+        <div className="absolute bottom-36 sm:bottom-40 left-0 right-0 flex justify-center pointer-events-none z-45">
+          <div className="flex items-center gap-2 bg-black/80 backdrop-blur-md text-white/90 px-4 py-2 rounded-full text-xs font-medium border border-white/10 shadow-xl">
+            <div className="w-3.5 h-3.5 border-2 border-red-500/40 border-t-red-500 rounded-full animate-spin" />
             Cargando subtítulos...
           </div>
         </div>
       )}
       {currentSubtitleText && !isLoadingSubtitles && (
         <div
-          className={`absolute left-0 right-0 flex justify-center pointer-events-none z-20 transition-all duration-300 ${
-            showControls || showAudioSubMenu ? 'bottom-32' : 'bottom-8'
+          className={`absolute left-0 right-0 flex justify-center pointer-events-none z-45 transition-all duration-300 ${
+            showAudioSubMenu
+              ? 'bottom-48 sm:bottom-52'
+              : showControls
+              ? 'bottom-36 sm:bottom-40'
+              : 'bottom-10 sm:bottom-12'
           }`}
         >
           <div className="max-w-2xl mx-4 text-center">
             <p
-              className="inline-block bg-black/85 text-white px-4 py-2 rounded-lg text-base font-medium leading-snug whitespace-pre-line shadow-lg"
-              style={{ textShadow: '0 1px 4px rgba(0,0,0,0.9)', fontSize: 'clamp(14px, 2vw, 20px)' }}
+              className="inline-block bg-black/75 backdrop-blur-md text-white px-5 py-2.5 rounded-2xl border border-white/10 text-base sm:text-lg font-semibold tracking-wide leading-relaxed whitespace-pre-line shadow-2xl"
+              style={{
+                textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 2px rgba(0,0,0,0.9)',
+                fontSize: 'clamp(15px, 2.2vw, 22px)'
+              }}
             >
               {currentSubtitleText}
             </p>
@@ -1162,27 +1286,29 @@ export default function MediaPlayer({
         </div>
       )}
 
-      {/* On-Screen Seek Ripple Animation Overlay (Centered in Screen) */}
+      {/* On-Screen Seek Ripple Animation Overlay (Left & Right Side Ripple) */}
       {seekFeedback && (
-        <div className="absolute inset-0 pointer-events-none z-35 flex items-center justify-around px-8 sm:px-24 overflow-hidden">
-          {seekFeedback.type === 'rewind' && (
-            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/80 border border-red-600/60 text-white font-bold px-8 py-6 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
-              <Rewind10Icon className="w-12 h-12 text-red-500 animate-pulse" />
-              <span className="text-sm font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
+        <div className="absolute inset-0 pointer-events-none z-40 flex items-center justify-between px-6 sm:px-24 overflow-hidden">
+          {seekFeedback.type === 'rewind' ? (
+            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-1.5 bg-black/80 border-2 border-red-600/80 text-white font-bold w-28 h-28 sm:w-32 sm:h-32 rounded-full backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
+              <Rewind10Icon className="w-10 h-10 text-red-500 animate-pulse" />
+              <span className="text-xs font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
             </div>
-          )}
+          ) : <div />}
 
-          {seekFeedback.type === 'forward' && (
-            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/80 border border-red-600/60 text-white font-bold px-8 py-6 rounded-3xl backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
-              <Forward10Icon className="w-12 h-12 text-red-500 animate-pulse" />
-              <span className="text-sm font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
+          {seekFeedback.type === 'forward' ? (
+            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-1.5 bg-black/80 border-2 border-red-600/80 text-white font-bold w-28 h-28 sm:w-32 sm:h-32 rounded-full backdrop-blur-md shadow-2xl shadow-red-950/90 animate-fadeIn scale-110 select-none">
+              <Forward10Icon className="w-10 h-10 text-red-500 animate-pulse" />
+              <span className="text-xs font-mono font-bold tracking-widest text-red-400">{seekFeedback.label}</span>
             </div>
-          )}
+          ) : <div />}
 
           {seekFeedback.type === 'clipboard-copy' && (
-            <div key={seekFeedback.id} className="flex flex-col items-center justify-center gap-2 bg-black/85 border border-green-500/60 text-white font-bold px-8 py-5 rounded-3xl backdrop-blur-md shadow-2xl shadow-green-950/20 animate-fadeIn scale-110 select-none">
-              <Check className="w-10 h-10 text-green-500 animate-bounce" />
-              <span className="text-sm font-bold tracking-wide text-green-400">{seekFeedback.label}</span>
+            <div key={seekFeedback.id} className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="flex flex-col items-center justify-center gap-2 bg-black/85 border border-green-500/60 text-white font-bold px-8 py-5 rounded-3xl backdrop-blur-md shadow-2xl shadow-green-950/20 animate-fadeIn scale-110 select-none">
+                <Check className="w-10 h-10 text-green-500 animate-bounce" />
+                <span className="text-sm font-bold tracking-wide text-green-400">{seekFeedback.label}</span>
+              </div>
             </div>
           )}
         </div>
@@ -1229,18 +1355,12 @@ export default function MediaPlayer({
         </div>
       )}
 
-      {/* Buffering Overlay (Glassmorphism design) */}
+      {/* Buffering Overlay (Non-Intrusive Floating Pill) */}
       {isBuffering && !isLoadingVideo && !errorMsg && (
-        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center z-30 bg-black/30 backdrop-blur-[2px] transition-all animate-fadeIn">
-          <div className="flex flex-col items-center justify-center p-6 rounded-3xl bg-neutral-950/80 border border-neutral-800/80 shadow-2xl text-center space-y-4 max-w-xs">
-            <div className="relative flex items-center justify-center">
-              <div className="w-14 h-14 rounded-full border-4 border-red-600/20 border-t-red-600 animate-spin" />
-              <Tv className="absolute w-5 h-5 text-red-500 animate-pulse" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-bold text-white tracking-wide">Optimizando buffer...</p>
-              <p className="text-[11px] text-neutral-400">Recuperando fragmentos en red lenta</p>
-            </div>
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30 animate-fadeIn">
+          <div className="flex items-center gap-3 px-5 py-3 rounded-full bg-black/80 backdrop-blur-md border border-white/10 shadow-2xl">
+            <div className="w-5 h-5 rounded-full border-2 border-red-500/30 border-t-red-500 animate-spin" />
+            <span className="text-xs font-semibold text-white tracking-wide">Cargando...</span>
           </div>
         </div>
       )}

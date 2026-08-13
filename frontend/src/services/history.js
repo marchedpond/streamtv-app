@@ -3,6 +3,8 @@
  * Syncs Movies and Series left in-progress ("a medias") across all devices using Neon PostgreSQL API
  */
 
+import { getBackendUrl } from '../config';
+
 const LOCAL_STORAGE_KEY = 'streamtv_watch_history';
 
 const getLocalHistory = () => {
@@ -51,7 +53,7 @@ const saveLocalHistory = (item) => {
  */
 export const fetchWatchHistory = async () => {
   const localItems = getLocalHistory();
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const backendUrl = getBackendUrl();
   const token = localStorage.getItem('streamtv_token');
 
   try {
@@ -117,7 +119,7 @@ export const saveWatchProgress = async (itemData) => {
 
   saveLocalHistory(payload);
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
+  const backendUrl = getBackendUrl();
   const token = localStorage.getItem('streamtv_token');
 
   try {
