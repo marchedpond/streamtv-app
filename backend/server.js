@@ -590,7 +590,18 @@ async function executeIPTVRequest(requestBuilderFn) {
       console.log(`[Failover] Trying server ${server.name} (${server.url})...`);
 
       const upstream = await fetch(targetUrl, { method, headers });
-      if (upstream.ok || (upstream.status >= 400 && upstream.status < 500)) {
+
+      // Handle temporary 429 Too Many Requests rate-limiting from IPTV provider
+      if (upstream.status === 429) {
+        console.warn(`[Failover] Server ${server.name} rate-limited (429). Retrying after 1s delay...`);
+        await new Promise(r => setTimeout(r, 1000));
+        const retryUpstream = await fetch(targetUrl, { method, headers });
+        if (retryUpstream.ok || retryUpstream.status !== 429) {
+          return { upstream: retryUpstream, server, targetUrl };
+        }
+      }
+
+      if (upstream.ok || (upstream.status >= 400 && upstream.status < 500 && upstream.status !== 429)) {
         return { upstream, server, targetUrl };
       }
       console.warn(`[Failover] Server ${server.name} returned status ${upstream.status}. Retrying next...`);
