@@ -9,6 +9,7 @@ import ContinueWatching from './components/ContinueWatching';
 import Login from './components/Login';
 import Register from './components/Register';
 import AdminPanel from './components/AdminPanel';
+import BottomNav from './components/BottomNav';
 import { useDPadNavigation } from './hooks/useDPadNavigation';
 import { authenticateAccount, getLiveStreamUrl } from './services/xtream';
 import { fetchWatchHistory, saveWatchProgress } from './services/history';
@@ -306,7 +307,7 @@ export default function App() {
             />
 
             {/* Main Content Area */}
-            <main className="flex-1 h-full overflow-y-auto flex flex-col scrollbar-thin">
+            <main className="flex-1 h-full overflow-y-auto flex flex-col pb-20 md:pb-0 scrollbar-thin">
               {/* Continue Watching Section (Filtered by activeTab) */}
               {activeTab !== 'admin' && (
                 <ContinueWatching
@@ -344,6 +345,13 @@ export default function App() {
               </div>
             </main>
           </div>
+
+          {/* Fixed Bottom Navigation Bar for Mobile */}
+          <BottomNav
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            user={currentUser}
+          />
 
           {/* Resume Prompt Modal */}
           {pendingResumeStream && (

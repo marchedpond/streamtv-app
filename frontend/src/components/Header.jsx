@@ -22,7 +22,7 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
   }
 
   return (
-    <header className="h-14 sm:h-16 px-3 sm:px-6 glass-panel flex items-center justify-between z-40 relative border-b border-neutral-800 select-none">
+    <header className="h-16 sm:h-18 pt-[env(safe-area-inset-top,0px)] px-4 sm:px-6 glass-panel flex items-center justify-between z-40 relative border-b border-neutral-800 select-none">
       {/* Brand Logo */}
       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
         <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-neutral-900 overflow-hidden border border-neutral-800 flex items-center justify-center shadow-lg shadow-red-950/50">
@@ -33,30 +33,7 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
         </h1>
       </div>
 
-      {/* Navigation Items (Visible on all screens, compact on mobile) */}
-      <nav className="flex items-center gap-1 sm:gap-2">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              data-dpad-id={`header-nav-${item.id}`}
-              onClick={() => setActiveTab(item.id)}
-              className={`dpad-focusable px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
-                isActive
-                  ? 'bg-red-600 text-white shadow-md shadow-red-900/40 scale-105'
-                  : 'text-neutral-400 hover:text-white hover:bg-neutral-800/70'
-              }`}
-            >
-              <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isActive ? 'text-white' : 'text-neutral-400'}`} />
-              <span className="hidden xs:inline-block whitespace-nowrap">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* System Status (Hidden on mobile) */}
+      {/* System Status & Logout */}
       <div className="flex items-center gap-2 sm:gap-3 text-xs">
         <div className="hidden lg:flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl">
           <User className="w-3.5 h-3.5 text-red-500" />
@@ -68,18 +45,19 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
           </span>
         </div>
 
-        <button
-          onClick={onLogout}
-          className="md:hidden p-2 rounded-xl bg-neutral-900 hover:bg-red-950/20 text-neutral-400 hover:text-red-500 border border-neutral-800 transition cursor-pointer"
-          title="Cerrar Sesión"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
-
         <div className="hidden sm:flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl font-mono text-xs text-neutral-300">
           <Clock className="w-3.5 h-3.5 text-neutral-400" />
           <span>{formattedTime}</span>
         </div>
+
+        <button
+          onClick={onLogout}
+          className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-neutral-900 hover:bg-red-950/30 text-neutral-300 hover:text-red-500 border border-neutral-800 transition cursor-pointer flex items-center gap-1.5"
+          title="Cerrar Sesión"
+        >
+          <LogOut className="w-4 h-4 text-red-500" />
+          <span className="hidden sm:inline text-xs font-semibold">Cerrar Sesión</span>
+        </button>
       </div>
     </header>
   );

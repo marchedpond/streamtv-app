@@ -1619,38 +1619,43 @@ export default function MediaPlayer({
             </div>
           )}
 
-          {/* Action Buttons: Left (Volume), Center (Play/Rewind/Forward), Right (Audio & Subtitles, PiP, Fullscreen) */}
-          <div className="flex items-center justify-between gap-4">
-            {/* Left: Volume Control with Level Indicator & Slider */}
-            <div className="flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-2 rounded-2xl">
+          {/* Action Buttons Bar */}
+          <div className="flex items-center justify-between w-full gap-2 sm:gap-4">
+            {/* Left: Volume Control (Vertical on Mobile, Horizontal on Desktop) */}
+            <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 bg-neutral-900/90 border border-neutral-800 p-2 sm:px-3 sm:py-2 rounded-2xl order-1">
               <button
                 data-dpad-id="player-btn-mute"
                 onClick={toggleMute}
-                className="dpad-focusable p-1.5 rounded-lg text-neutral-300 hover:text-white transition cursor-pointer"
+                className="dpad-focusable p-1 rounded-lg text-neutral-300 hover:text-white transition cursor-pointer"
                 title="Silenciar / Activar Sonido"
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="w-5 h-5 text-red-500" />
+                  <VolumeX className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
                 ) : (
-                  <Volume2 className="w-5 h-5" />
+                  <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
                 )}
               </button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={isMuted ? 0 : volume}
-                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                className="w-16 sm:w-20 accent-red-600 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
-              />
-              <span className="text-[11px] font-mono font-bold text-neutral-400 min-w-[32px] text-right">
+
+              {/* Vertical slider on Mobile, Horizontal on Desktop */}
+              <div className="h-14 sm:h-auto flex items-center justify-center">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={isMuted ? 0 : volume}
+                  onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                  className="w-12 sm:w-20 accent-red-600 cursor-pointer h-1 bg-neutral-800 rounded-lg origin-center -rotate-90 sm:rotate-0 my-4 sm:my-0"
+                />
+              </div>
+
+              <span className="hidden sm:inline text-[11px] font-mono font-bold text-neutral-400 min-w-[32px] text-right">
                 {Math.round((isMuted ? 0 : volume) * 100)}%
               </span>
             </div>
 
             {/* Center: Main Playback Controls (Rewind -10 or SkipBack, Play/Pause, Forward +10 or SkipForward) */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center justify-center gap-2.5 sm:gap-4 order-2">
               <button
                 data-dpad-id="player-btn-rewind"
                 onClick={() => {
@@ -1660,23 +1665,23 @@ export default function MediaPlayer({
                     seek(-10);
                   }
                 }}
-                className="dpad-focusable p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
+                className="dpad-focusable p-2.5 sm:p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
                 title={isLive ? 'Canal anterior' : 'Retroceder 10 segundos'}
               >
                 {isLive ? (
-                  <SkipBack className="w-6 h-6 text-neutral-200" />
+                  <SkipBack className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-200" />
                 ) : (
-                  <Rewind10Icon className="w-6 h-6 text-neutral-200" />
+                  <Rewind10Icon className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-200" />
                 )}
               </button>
 
               <button
                 data-dpad-id="player-btn-play"
                 onClick={togglePlay}
-                className="dpad-focusable p-4 sm:p-5 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all cursor-pointer shadow-xl shadow-red-950/80 hover:scale-105"
+                className="dpad-focusable p-3.5 sm:p-5 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all cursor-pointer shadow-xl shadow-red-950/80 hover:scale-105"
                 title={isPlaying ? 'Pausar' : 'Reproducir'}
               >
-                {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 fill-current ml-0.5" />}
+                {isPlaying ? <Pause className="w-6 h-6 sm:w-7 sm:h-7" /> : <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-0.5" />}
               </button>
 
               <button
@@ -1688,23 +1693,41 @@ export default function MediaPlayer({
                     seek(10);
                   }
                 }}
-                className="dpad-focusable p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
+                className="dpad-focusable p-2.5 sm:p-3 rounded-full bg-neutral-900/90 hover:bg-neutral-800 text-neutral-200 transition-all cursor-pointer border border-neutral-800 shadow-md flex items-center justify-center"
                 title={isLive ? 'Canal siguiente' : 'Adelantar 10 segundos'}
               >
                 {isLive ? (
-                  <SkipForward className="w-6 h-6 text-neutral-200" />
+                  <SkipForward className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-200" />
                 ) : (
-                  <Forward10Icon className="w-6 h-6 text-neutral-200" />
+                  <Forward10Icon className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-200" />
                 )}
               </button>
             </div>
 
-            {/* Right: Audio & Subtitles Button + Picture-in-Picture + Fullscreen */}
-            <div className="flex items-center gap-2.5">
+            {/* Right: Audio & Subtitles + PiP + Fullscreen (Stacked Vertically on Mobile, Horizontal on Desktop) */}
+            <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-2.5 order-3">
+              <button
+                data-dpad-id="player-btn-fullscreen"
+                onClick={toggleFullscreen}
+                className="dpad-focusable p-2 sm:p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
+                title="Pantalla Completa"
+              >
+                <Maximize className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+
+              <button
+                data-dpad-id="player-btn-pip"
+                onClick={togglePictureInPicture}
+                className="dpad-focusable p-2 sm:p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
+                title="Ventana Flotante / Picture-in-Picture (Segundo Plano)"
+              >
+                <PictureInPicture className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+
               <button
                 data-dpad-id="player-btn-audiosub"
                 onClick={() => { syncTracks(); setShowAudioSubMenu(true); }}
-                className={`dpad-focusable px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer border flex items-center gap-2 text-xs font-bold ${
+                className={`dpad-focusable p-2 sm:px-3.5 sm:py-2.5 rounded-2xl transition-all cursor-pointer border flex items-center gap-1.5 text-xs font-bold ${
                   showAudioSubMenu || hasMultipleTracks
                     ? 'bg-red-950/90 border-red-600 text-white shadow-lg shadow-red-950/50'
                     : 'bg-neutral-900/90 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'
@@ -1713,24 +1736,6 @@ export default function MediaPlayer({
               >
                 <Languages className="w-4 h-4 text-red-500" />
                 <span className="hidden sm:inline">Audio y Subtítulos</span>
-              </button>
-
-              <button
-                data-dpad-id="player-btn-pip"
-                onClick={togglePictureInPicture}
-                className="dpad-focusable p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
-                title="Ventana Flotante / Picture-in-Picture (Segundo Plano)"
-              >
-                <PictureInPicture className="w-5 h-5" />
-              </button>
-
-              <button
-                data-dpad-id="player-btn-fullscreen"
-                onClick={toggleFullscreen}
-                className="dpad-focusable p-2.5 rounded-2xl bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white transition-all cursor-pointer border border-neutral-800"
-                title="Pantalla Completa"
-              >
-                <Maximize className="w-5 h-5" />
               </button>
             </div>
           </div>
