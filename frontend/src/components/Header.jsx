@@ -23,11 +23,9 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
 
   return (
     <header className="h-16 sm:h-18 pt-[env(safe-area-inset-top,0px)] px-3.5 sm:px-6 glass-panel flex items-center justify-between z-40 relative border-b border-neutral-800 select-none">
-      {/* Brand Capsule Pill (Text only on mobile, Glowing TV Screen Icon + Text on desktop) */}
-      <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-neutral-900/90 border border-neutral-800/90 shadow-md flex-shrink-0">
-        <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-xl bg-red-950/50 border border-red-600/60 p-1 text-red-500 shadow-lg shadow-red-950/80">
-          <Tv className="w-5 h-5 text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
-        </div>
+      {/* Brand Capsule Pill (Seamless Transparent TV+S Logo Icon + HTML StreamTV Text) */}
+      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-neutral-900/90 border border-neutral-800/90 shadow-md flex-shrink-0">
+        <img src="/logo_icon_transparent.png" alt="StreamTV Logo" className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
         <h1 className="text-sm sm:text-lg font-extrabold tracking-wider text-white flex items-center gap-1 leading-none">
           Stream<span className="text-red-600 font-black">TV</span>
         </h1>
