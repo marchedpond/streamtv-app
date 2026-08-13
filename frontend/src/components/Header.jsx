@@ -9,7 +9,7 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
     return () => clearInterval(timer);
   }, []);
 
-  const formattedTime = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formattedTime = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
   const navItems = [
     { id: 'live', label: 'TV en Vivo', icon: Tv },
@@ -31,9 +31,10 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
         </h1>
       </div>
 
-      {/* System Status & Logout */}
-      <div className="flex items-center gap-2 sm:gap-3 text-xs">
-        <div className="hidden lg:flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl">
+      {/* System Status & Logout (Symmetrical pills matching left brand pill height) */}
+      <div className="flex items-center gap-2 text-xs">
+        {/* User Info (Desktop only) */}
+        <div className="hidden lg:flex items-center gap-2 bg-neutral-900/90 border border-neutral-800 px-3 py-1.5 rounded-2xl shadow-md">
           <User className="w-3.5 h-3.5 text-red-500" />
           <span className="font-semibold text-neutral-200 truncate max-w-[120px]">
             {user?.email || 'Usuario'}
@@ -43,18 +44,20 @@ export default function Header({ accountInfo, activeTab, setActiveTab, user, onL
           </span>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 bg-neutral-900/80 border border-neutral-800 px-3 py-1.5 rounded-xl font-mono text-xs text-neutral-300">
-          <Clock className="w-3.5 h-3.5 text-neutral-400" />
-          <span>{formattedTime}</span>
+        {/* Live Clock Pill (Mobile & Desktop) */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-2xl bg-neutral-900/90 border border-neutral-800/90 shadow-md font-mono text-[10px] sm:text-xs">
+          <Clock className="w-3.5 h-3.5 text-red-500" />
+          <span className="font-bold text-neutral-200">{formattedTime}</span>
         </div>
 
+        {/* Logout Pill (Mobile & Desktop) */}
         <button
           onClick={onLogout}
-          className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-neutral-900 hover:bg-red-950/30 text-neutral-300 hover:text-red-500 border border-neutral-800 transition cursor-pointer flex items-center gap-1.5"
+          className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-2xl bg-neutral-900/90 hover:bg-red-950/40 text-neutral-300 hover:text-red-500 border border-neutral-800/90 shadow-md transition cursor-pointer"
           title="Cerrar Sesión"
         >
-          <LogOut className="w-4 h-4 text-red-500" />
-          <span className="hidden sm:inline text-xs font-semibold">Cerrar Sesión</span>
+          <LogOut className="w-3.5 h-3.5 text-red-500" />
+          <span className="text-[10px] sm:text-xs font-semibold text-neutral-300">Salir</span>
         </button>
       </div>
     </header>
