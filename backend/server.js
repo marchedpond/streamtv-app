@@ -24,11 +24,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key');
 
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.JWT_SECRET || 'streamtv-super-secret-key-12345';
-const IPTV_SERVER = (process.env.VITE_IPTV_SERVER || 'http://superflash.ovh').replace(/\/+$/, '');
+const IPTV_SERVER = (process.env.VITE_IPTV_SERVER || 'http://superflash.ovh:80').replace(/\/+$/, '');
 const IPTV_USER = process.env.VITE_IPTV_USER || 'astrotv0907';
 const IPTV_PASS = process.env.VITE_IPTV_PASS || 'sYeTeAwMHy';
 const DATABASE_URL = process.env.DATABASE_URL;
