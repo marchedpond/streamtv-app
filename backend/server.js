@@ -1,3 +1,7 @@
+const xtreamApiCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+function getCachedResponse(cacheKey) { if (xtreamApiCache.has(cacheKey)) { const { data, timestamp, contentType } = xtreamApiCache.get(cacheKey); if (Date.now() - timestamp < CACHE_TTL_MS) { return { data, contentType }; } xtreamApiCache.delete(cacheKey); } return null; }
+function setCachedResponse(cacheKey, data, contentType) { xtreamApiCache.set(cacheKey, { data, contentType, timestamp: Date.now() }); if (xtreamApiCache.size > 200) { const oldestKey = xtreamApiCache.keys().next().value; xtreamApiCache.delete(oldestKey); } }
 import express from 'express';
 import { spawn } from 'child_process';
 import cors from 'cors';
@@ -24,9 +28,9 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const PORT = process.env.PORT || 8080;
 const JWT_SECRET = process.env.JWT_SECRET || 'streamtv-super-secret-key-12345';
-const IPTV_SERVER = (process.env.VITE_IPTV_SERVER || 'http://espartanos.live:8080').replace(/\/+$/, '');
-const IPTV_USER = process.env.VITE_IPTV_USER || 'JosueMejia';
-const IPTV_PASS = process.env.VITE_IPTV_PASS || 'PPw3tAhK4P';
+const IPTV_SERVER = (process.env.VITE_IPTV_SERVER || 'http://superflash.ovh').replace(/\/+$/, '');
+const IPTV_USER = process.env.VITE_IPTV_USER || 'astrotv0907';
+const IPTV_PASS = process.env.VITE_IPTV_PASS || 'sYeTeAwMHy';
 const DATABASE_URL = process.env.DATABASE_URL;
 
 // Database Connection helper
@@ -622,6 +626,15 @@ app.get('/api_proxy', authenticateToken, async (req, res) => {
   delete queryParams.action;
   delete queryParams.token;
 
+  const cacheKey = JSON.stringify({ action, queryParams });
+  const cached = getCachedResponse(cacheKey);
+  if (cached) {
+    if (cached.contentType && cached.contentType.includes('application/json')) {
+      return res.status(200).json(cached.data);
+    }
+    return res.status(200).send(cached.data);
+  }
+
   try {
     const { upstream } = await executeIPTVRequest((server) => ({
       path: 'player_api.php',
@@ -631,9 +644,11 @@ app.get('/api_proxy', authenticateToken, async (req, res) => {
     const contentType = upstream.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await upstream.json();
+      setCachedResponse(cacheKey, data, contentType);
       res.status(200).json(data);
     } else {
       const text = await upstream.text();
+      setCachedResponse(cacheKey, text, contentType);
       res.status(200).send(text);
     }
   } catch (err) {
