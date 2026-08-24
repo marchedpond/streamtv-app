@@ -51,6 +51,7 @@ export default function MediaPlayer({
 
   // Seek Ripple Animation State
   const [seekFeedback, setSeekFeedback] = useState(null);
+  const [timelineHoverInfo, setTimelineHoverInfo] = useState(null);
   const seekFeedbackTimeoutRef = useRef(null);
 
   // Audio & Subtitle Tracks State
@@ -1598,23 +1599,54 @@ export default function MediaPlayer({
         <div className="space-y-4">
           {/* Interactive Timeline Progress Bar Slider */}
           {!isLive && (
-            <div className="space-y-1 group">
+            <div 
+              className="space-y-1 group relative pt-2"
+              onMouseMove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const pct = Math.max(0, Math.min(1, x / rect.width));
+                const totalDur = duration || knownDuration || 0;
+                setTimelineHoverInfo({
+                  time: pct * totalDur,
+                  pct: pct * 100
+                });
+              }}
+              onMouseLeave={() => setTimelineHoverInfo(null)}
+            >
+              {/* Hover Timestamp Preview Badge */}
+              {timelineHoverInfo && timelineHoverInfo.time > 0 && (
+                <div
+                  className="absolute -top-7 transform -translate-x-1/2 bg-neutral-900/95 text-white font-mono text-[11px] font-bold px-2.5 py-1 rounded-lg border border-red-600 shadow-xl pointer-events-none z-30 flex items-center gap-1 shadow-red-950/50"
+                  style={{ left: `${timelineHoverInfo.pct}%` }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                  <span>{formatTime(timelineHoverInfo.time)}</span>
+                </div>
+              )}
+
               <div className="relative w-full flex items-center">
                 <input
                   type="range"
                   min="0"
-                  max={duration || 100}
+                  max={duration || knownDuration || 100}
                   step="1"
                   value={currentTime || 0}
                   onChange={handleTimelineSeek}
                   data-dpad-id="player-timeline-slider"
-                  className="dpad-focusable w-full accent-red-600 h-2 bg-neutral-800 rounded-full cursor-pointer appearance-none transition-all hover:h-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  style={{
+                    background: `linear-gradient(to right, #e50914 0%, #e50914 ${
+                      (duration || knownDuration) > 0 ? ((currentTime || 0) / (duration || knownDuration)) * 100 : 0
+                    }%, #262626 ${
+                      (duration || knownDuration) > 0 ? ((currentTime || 0) / (duration || knownDuration)) * 100 : 0
+                    }%, #262626 100%)`
+                  }}
+                  className="dpad-focusable w-full accent-red-600 h-2.5 rounded-full cursor-pointer appearance-none transition-all hover:h-3.5 focus:outline-none focus:ring-2 focus:ring-red-500 shadow-inner"
                   title="Deslizar para adelantar o retroceder"
                 />
               </div>
               <div className="flex justify-between text-xs text-neutral-400 font-mono pt-1">
                 <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
+                <span>{formatTime(duration || knownDuration)}</span>
               </div>
             </div>
           )}
