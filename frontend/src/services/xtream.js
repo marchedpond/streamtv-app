@@ -47,7 +47,8 @@ const fetchJson = async (action = '', extraParams = '', timeoutMs = 25000) => {
     });
     clearTimeout(timer);
 
-    if (response.status === 403) {
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem('streamtv_token');
       window.dispatchEvent(new Event('auth-expired'));
     }
 

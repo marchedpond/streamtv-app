@@ -1,3 +1,5 @@
+process.on('uncaughtException', (err) => { console.error('[Server Warning]', err ? (err.message || err) : err); });
+process.on('unhandledRejection', (reason) => { console.error('[Server Warning]', reason ? (reason.message || reason) : reason); });
 const xtreamApiCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 function getCachedResponse(cacheKey) { if (xtreamApiCache.has(cacheKey)) { const { data, timestamp, contentType } = xtreamApiCache.get(cacheKey); if (Date.now() - timestamp < CACHE_TTL_MS) { return { data, contentType }; } xtreamApiCache.delete(cacheKey); } return null; }
