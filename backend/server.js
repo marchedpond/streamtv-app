@@ -923,19 +923,23 @@ app.get('/api_stream/:type/:file', authenticateToken, async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', 'no-cache');
       
-      const command = ffmpeg(targetUrl);
+      const audioTrackIdx = parseInt(req.query.audioTrack || req.query.at || '0', 10);
+      const command = ffmpeg();
       if (startTime > 0) {
-        command.seekInput(startTime);
+        command.inputOptions(['-ss', String(startTime)]);
       }
+      command.input(targetUrl);
       command
         .videoCodec(videoNeedsTranscode ? 'libx264' : 'copy')
         .audioCodec(audioNeedsTranscode ? 'aac' : 'copy')
         .format('mp4')
         .outputOptions([
           '-map', '0:v:0',
-          '-map', '0:a:0?',
+          '-map', `0:a:${audioTrackIdx}?`,
+          '-af', 'aresample=async=1',
+          '-avoid_negative_ts', 'make_zero',
           '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-          '-min_frag_duration', '2000000', // Enforce tight 2-second fragment size for instant HTTP delivery
+          '-min_frag_duration', '1000000',
           ...(videoNeedsTranscode ? ['-preset', 'fast', '-crf', '23'] : [])
         ]);
 
