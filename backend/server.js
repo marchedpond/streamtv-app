@@ -782,7 +782,7 @@ app.get('/api_subtitles', authenticateToken, async (req, res) => {
     try {
       const { upstream } = await executeIPTVRequest((server) => ({
         path: `${pathType}/${server.username}/${server.password}/${id}.${ext}`,
-        headers: { 'Range': 'bytes=0-3145728' },
+        headers: { 'Range': 'bytes=0-12582912' },
         skipAuth: true
       }));
 

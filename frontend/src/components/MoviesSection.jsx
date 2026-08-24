@@ -313,7 +313,8 @@ export default function MoviesSection({ onPlayStream }) {
                       poster: selectedMovie.stream_icon,
                       url: playUrl,
                       audioCodec: audioCodec,
-                      container_extension: selectedMovie.container_extension
+                      container_extension: selectedMovie.container_extension,
+                      duration: movieDetail?.info?.duration_secs || movieDetail?.info?.duration || selectedMovie.duration
                     });
                     setSelectedMovie(null);
                   }}

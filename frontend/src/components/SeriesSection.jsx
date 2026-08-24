@@ -336,22 +336,32 @@ export default function SeriesSection({ onPlayStream }) {
                             poster: selectedSeries.cover,
                             url: playUrl,
                             audioCodec: audioCodec,
-                            container_extension: ep.container_extension
+                            series_id: selectedSeries.series_id,
+                            container_extension: ep.container_extension,
+                            duration: ep.info?.duration_secs || ep.info?.duration || ep.duration_secs || (selectedSeries.episode_run_time ? parseInt(selectedSeries.episode_run_time, 10) * 60 : 0)
                           });
                           setSelectedSeries(null);
                         }}
                         className="dpad-focusable bg-neutral-900/90 border border-neutral-800 rounded-2xl p-3 flex items-center justify-between gap-4 hover:border-red-600 hover:bg-neutral-800 cursor-pointer transition-all"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-red-950/60 border border-red-800/40 text-red-500 flex items-center justify-center flex-shrink-0">
-                            <Play className="w-4 h-4 fill-current" />
+                        <div className="flex items-center gap-3.5">
+                          <div className="w-20 h-12 rounded-xl overflow-hidden bg-neutral-800 border border-neutral-700/60 flex-shrink-0 relative group shadow-md">
+                            <img
+                              src={ep.info?.movie_image || ep.info?.cover_big || ep.cover || selectedSeries.cover}
+                              alt={ep.title || `Episodio ${ep.episode_num}`}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              onError={(e) => { e.target.src = selectedSeries.cover; }}
+                            />
+                            <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center transition-opacity group-hover:bg-red-950/60">
+                              <Play className="w-4 h-4 text-white fill-current drop-shadow-md" />
+                            </div>
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-white">
+                            <p className="text-xs font-bold text-white leading-snug line-clamp-1">
                               {ep.episode_num ? `Episodio ${ep.episode_num}: ` : ''} {ep.title || 'Sin título'}
                             </p>
-                            <p className="text-[10px] text-neutral-400 font-mono">
-                              Formato: {ep.container_extension || 'MP4'}
+                            <p className="text-[10px] text-neutral-400 font-mono pt-0.5">
+                              Formato: <span className="text-red-400 uppercase font-semibold">{ep.container_extension || 'MKV'}</span>
                             </p>
                           </div>
                         </div>

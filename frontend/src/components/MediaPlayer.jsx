@@ -1597,7 +1597,7 @@ export default function MediaPlayer({
         {/* Bottom Bar: Timeline & Controls */}
         <div className="space-y-4">
           {/* Interactive Timeline Progress Bar Slider */}
-          {duration > 0 && (
+          {!isLive && (
             <div className="space-y-1 group">
               <div className="relative w-full flex items-center">
                 <input
